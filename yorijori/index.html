@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#FF6B35" />
+  <title>요리조리</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ===== Pages ===== -->
+    <main id="main-content">
+
+      <!-- 홈 -->
+      <section id="page-home" class="page active" aria-label="홈">
+
+        <header class="page-header">
+          <h1 class="app-title">요리조리 🍳</h1>
+          <p class="app-subtitle">AI에게 요리를 물어보세요</p>
+        </header>
+
+        <!-- ── AI 채팅 ── -->
+        <div class="chat-wrap">
+          <div id="chat-messages" class="chat-messages">
+            <!-- 웰컴 메시지 -->
+            <div class="chat-msg chat-ai">
+              <span class="chat-avatar">🤖</span>
+              <div class="chat-bubble">
+                안녕하세요! 저는 <strong>요리조리 AI</strong>예요 🍳<br>
+                어떤 요리가 궁금하신가요?
+              </div>
+            </div>
+          </div>
+          <div class="chat-input-bar">
+            <div class="chat-input-wrap">
+              <button class="chat-attach-btn" aria-label="이미지 첨부">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+              <input id="chat-input" class="chat-input-field" type="text"
+                     placeholder="요리명, 재료를 물어보세요" autocomplete="off" />
+              <button class="chat-mic-btn" aria-label="음성 인식">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="2" width="6" height="11" rx="3"/>
+                  <path d="M5 10a7 7 0 0 0 14 0"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
+                  <line x1="9" y1="21" x2="15" y2="21"/>
+                </svg>
+              </button>
+            </div>
+            <button id="chat-send-btn" class="chat-send-btn" aria-label="전송">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- ── SNS 핫한 요리 ── -->
+        <div class="section-block" style="padding-bottom: 4px;">
+          <h2 class="section-title" style="margin-bottom: 0;">지금 SNS 핫한 요리 🔥</h2>
+        </div>
+        <div id="sns-strip" class="sns-strip"></div>
+
+        <!-- ── 냉장고 파먹기 추천 ── -->
+        <div class="section-block" style="padding-bottom: 4px;">
+          <h2 class="section-title" style="margin-bottom: 0;">냉장고 파먹기 🎯</h2>
+        </div>
+        <!-- JS가 수평 스크롤 카드 렌더링 -->
+        <div id="fridge-reco-strip" class="fridge-reco-strip"></div>
+
+      </section>
+
+      <!-- 냉장고 관리 -->
+      <section id="page-fridge" class="page" aria-label="냉장고 관리">
+        <header class="page-header">
+          <h1 class="page-title">냉장고 관리</h1>
+          <p class="page-desc">보유 재료를 등록하면 맞춤 레시피를 추천해 드려요.</p>
+        </header>
+        <div class="section-block">
+
+          <!-- 냉장고 카드 컨테이너 -->
+          <div class="fridge-card">
+            <div class="fridge-card-header">
+              <span class="fridge-card-icon">🧊</span>
+              <span class="fridge-card-title">냉장고</span>
+              <button id="open-add-ingr-btn" class="fridge-add-btn" aria-label="재료 추가">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                재료 추가
+              </button>
+            </div>
+            <!-- 카테고리 필터 탭 -->
+            <div class="fridge-tab-bar" role="tablist" aria-label="카테고리 필터">
+              <button class="fridge-tab active" data-cat="전체"      role="tab" aria-selected="true">전체</button>
+              <button class="fridge-tab urgent"  data-cat="임박 🚨"  role="tab" aria-selected="false">임박 🚨</button>
+              <button class="fridge-tab"         data-cat="채소/과일" role="tab" aria-selected="false">채소/과일</button>
+              <button class="fridge-tab"         data-cat="육류/수산" role="tab" aria-selected="false">육류/수산</button>
+              <button class="fridge-tab"         data-cat="유제품"   role="tab" aria-selected="false">유제품</button>
+              <button class="fridge-tab"         data-cat="가공/편의점" role="tab" aria-selected="false">가공/편의점</button>
+              <button class="fridge-tab"         data-cat="양념"     role="tab" aria-selected="false">양념</button>
+            </div>
+            <!-- 카테고리별 재료 목록 (JS가 렌더링) -->
+            <div id="fridge-content"></div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- 레시피 탐색 -->
+      <section id="page-explore" class="page" aria-label="레시피 탐색">
+        <header class="page-header">
+          <h1 class="page-title">레시피 탐색</h1>
+        </header>
+        <div class="section-block">
+          <!-- 검색창 -->
+          <div class="search-bar">
+            <span class="search-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </span>
+            <input id="search-input" class="search-input" type="search" placeholder="요리명 또는 재료로 검색" autocomplete="off" />
+          </div>
+          <!-- 카테고리 칩 (JS 렌더링) -->
+          <div id="category-chips-bar" class="category-chips-bar" role="tablist" aria-label="카테고리 필터"></div>
+
+          <!-- 툴바: 즐겨찾기 토글 + 결과 수 -->
+          <div class="explore-toolbar">
+            <button id="fav-toggle-btn" class="fav-toggle-btn" aria-pressed="false">
+              <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+              </svg>
+              즐겨찾기 모아보기
+            </button>
+            <span id="result-count" class="result-count"></span>
+          </div>
+        </div>
+        <!-- 레시피 카드 목록 (JS 렌더링) -->
+        <div id="explore-list" class="explore-list"></div>
+      </section>
+
+    </main>
+
+    <!-- ===== Bottom Navigation Bar ===== -->
+    <nav id="bottom-nav" aria-label="하단 네비게이션">
+      <button class="nav-item active" data-page="home" aria-label="홈">
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/>
+            <polyline points="9 21 9 12 15 12 15 21"/>
+          </svg>
+        </span>
+        <span class="nav-label">홈</span>
+      </button>
+
+      <button class="nav-item" data-page="fridge" aria-label="냉장고 관리">
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="2" width="14" height="20" rx="2"/>
+            <line x1="5" y1="10" x2="19" y2="10"/>
+            <line x1="12" y1="5" x2="12" y2="8"/>
+            <line x1="12" y1="14" x2="12" y2="18"/>
+          </svg>
+        </span>
+        <span class="nav-label">냉장고</span>
+      </button>
+
+      <button class="nav-item" data-page="explore" aria-label="레시피 탐색">
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </span>
+        <span class="nav-label">탐색</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- ===== Recipe Detail Modal ===== -->
+  <div id="recipe-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-recipe-name" hidden>
+    <div class="modal-sheet">
+      <div class="modal-top-bar">
+        <div class="modal-handle"></div>
+        <button class="modal-close-btn" id="modal-close-btn" aria-label="닫기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- ===== 재료 추가 모달 ===== -->
+  <div id="add-ingr-modal" class="add-ingr-overlay" role="dialog" aria-modal="true" aria-label="재료 추가" hidden>
+    <div class="add-ingr-sheet">
+      <div class="add-ingr-header">
+        <span class="add-ingr-title">재료 추가</span>
+        <button id="add-ingr-close-btn" class="add-ingr-close" aria-label="닫기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="add-ingr-body">
+        <!-- 재료명 -->
+        <div class="add-ingr-field">
+          <label class="add-ingr-label" for="modal-ingr-input">재료명</label>
+          <input id="modal-ingr-input" class="text-input" type="text" placeholder="재료 이름을 입력하세요" autocomplete="off" />
+        </div>
+        <!-- 카테고리 -->
+        <div class="add-ingr-field">
+          <label class="add-ingr-label" for="modal-category-select">카테고리</label>
+          <select id="modal-category-select" class="category-select" aria-label="카테고리 선택">
+            <option value="채소/과일">🥬 채소/과일</option>
+            <option value="육류/수산">🥩 육류/수산</option>
+            <option value="유제품">🧀 유제품</option>
+            <option value="가공/편의점">🥫 가공/편의점</option>
+            <option value="양념">🫙 양념</option>
+          </select>
+        </div>
+        <!-- 유통기한 -->
+        <div class="add-ingr-field">
+          <label class="add-ingr-label" for="modal-expiry-input">유통기한</label>
+          <input id="modal-expiry-input" class="date-input" type="date" aria-label="유통기한" />
+          <div class="expiry-shortcuts" aria-label="유통기한 빠른 선택">
+            <button type="button" class="expiry-shortcut-btn" data-days="1">+1일</button>
+            <button type="button" class="expiry-shortcut-btn" data-days="3">+3일</button>
+            <button type="button" class="expiry-shortcut-btn" data-days="7">+7일</button>
+            <button type="button" class="expiry-shortcut-btn" data-days="30">+30일</button>
+          </div>
+        </div>
+        <!-- 갯수 -->
+        <div class="add-ingr-field">
+          <label class="add-ingr-label">갯수</label>
+          <div class="ingr-count-row">
+            <button type="button" id="modal-count-minus" class="count-btn" aria-label="갯수 줄이기">−</button>
+            <span id="modal-count-display" class="count-display">1</span>
+            <button type="button" id="modal-count-plus" class="count-btn" aria-label="갯수 늘리기">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="add-ingr-footer">
+        <button id="modal-ingr-add-btn" class="btn-primary btn-full">등록</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
