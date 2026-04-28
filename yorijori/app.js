@@ -34,6 +34,39 @@ const Storage = {
 
 
 /* =========================================
+   Api — 백엔드 REST 통신
+   ========================================= */
+const Api = (() => {
+  const BASE = '/api';
+
+  async function get(path) {
+    const res = await fetch(`${BASE}${path}`);
+    if (!res.ok) throw new Error(`API ${path} 실패: ${res.status}`);
+    return res.json();
+  }
+
+  /** DB 레시피 전체 로드 후 RECIPES 배열에 병합 */
+  async function loadRecipes() {
+    try {
+      const dbRecipes = await get('/recipes');
+      // 이미 있는 id는 건너뜀 (로컬 하드코딩과 중복 방지)
+      const existingIds = new Set(RECIPES.map(r => r.id));
+      dbRecipes.forEach(r => { if (!existingIds.has(r.id)) RECIPES.push(r); });
+    } catch (e) {
+      console.warn('API 레시피 로드 실패 (오프라인 모드):', e.message);
+    }
+  }
+
+  /** 단일 레시피 상세 (steps + reviews) */
+  async function fetchRecipe(id) {
+    return get(`/recipes/${id}`);
+  }
+
+  return { loadRecipes, fetchRecipe };
+})();
+
+
+/* =========================================
    Router — SPA 탭 네비게이션
    ========================================= */
 const Router = (() => {
@@ -1387,8 +1420,10 @@ const Explore = (() => {
   let activeCategory   = '전체';
   let fridgeIngredients = []; // 냉장고 다중 선택으로 전달된 재료 이름 목록
 
-  /* RECIPES에 있는 카테고리 목록 (삽입 순서 유지, 중복 제거) */
-  const CATEGORIES_LIST = ['전체', ...new Set(RECIPES.map(r => r.category).filter(Boolean))];
+  /* RECIPES에 있는 카테고리 목록 — API 로드 후에도 최신 목록 반환 */
+  function getCategoriesList() {
+    return ['전체', ...new Set(RECIPES.map(r => r.category).filter(Boolean))];
+  }
 
   /* ---------- 즐겨찾기 저장 ---------- */
 
@@ -1517,7 +1552,7 @@ const Explore = (() => {
     bar.appendChild(favBtn);
 
     // 카테고리
-    CATEGORIES_LIST.filter(c => c !== '전체').forEach(cat => {
+    getCategoriesList().filter(c => c !== '전체').forEach(cat => {
       const btn = document.createElement('button');
       btn.className = `category-chip${cat === activeCategory && !showFavOnly ? ' active' : ''}`;
       btn.setAttribute('role', 'tab');
@@ -1882,7 +1917,7 @@ const Explore = (() => {
     }
   }
 
-  return { init, refreshRecos, toggleFavorite, isFavorite: id => favorites.has(id), filterByIngredients, clearFridgeFilter };
+  return { init, render, refreshRecos, toggleFavorite, isFavorite: id => favorites.has(id), filterByIngredients, clearFridgeFilter };
 })();
 
 
@@ -2168,12 +2203,25 @@ const RecipeModal = (() => {
     const bodyEl  = document.getElementById('modal-body');
     if (!recipe || !overlay || !bodyEl) return;
 
-    bodyEl.innerHTML = '';
-    bodyEl.appendChild(buildContent(recipe));
-
     overlay.removeAttribute('hidden');
-    // 다음 프레임에 클래스를 추가해야 트랜지션이 재생됨
     requestAnimationFrame(() => overlay.classList.add('open'));
+
+    if (recipe.source === 'db') {
+      // DB 레시피: API에서 steps + reviews 가져온 뒤 렌더
+      bodyEl.innerHTML = '<p style="padding:32px;text-align:center;color:var(--color-text-secondary)">불러오는 중…</p>';
+      Api.fetchRecipe(recipeId).then(full => {
+        // 캐시 갱신
+        Object.assign(recipe, full);
+        bodyEl.innerHTML = '';
+        bodyEl.appendChild(buildContent(recipe));
+      }).catch(() => {
+        bodyEl.innerHTML = '';
+        bodyEl.appendChild(buildContent(recipe));
+      });
+    } else {
+      bodyEl.innerHTML = '';
+      bodyEl.appendChild(buildContent(recipe));
+    }
   }
 
   /* ---------- 모달 닫기 ---------- */
@@ -2302,8 +2350,11 @@ const RecipeModal = (() => {
     frag.appendChild(ytSection);
 
     /* 리뷰 섹션 */
-    const photoReviews = RECIPE_REVIEWS[recipe.id] || [];
-    const textReviews  = RECIPE_TEXT_REVIEWS[recipe.id] || [];
+    // DB 레시피는 recipe.reviews 배열 사용, 로컬 레시피는 하드코딩 객체 사용
+    const photoReviews = recipe.source === 'db' ? [] : (RECIPE_REVIEWS[recipe.id] || []);
+    const textReviews  = recipe.source === 'db'
+      ? (recipe.reviews || []).map(r => ({ ...r, date: r.date || '' }))
+      : (RECIPE_TEXT_REVIEWS[recipe.id] || []);
     const totalReviews = photoReviews.length + textReviews.length;
 
     if (totalReviews > 0) {
@@ -2839,6 +2890,9 @@ document.addEventListener('DOMContentLoaded', () => {
   PhotoLightbox.init();
   Settings.init();
   initChips();
+
+  // DB 레시피 비동기 로드 → 완료 후 탐색 탭 재렌더
+  Api.loadRecipes().then(() => Explore.render());
 
   // 냉장고 레시피 검색 버튼 클릭
   document.getElementById('fridge-recipe-search-btn')
