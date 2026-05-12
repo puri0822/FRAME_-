@@ -76,4 +76,18 @@ export default StyleSheet.create({
   },
   segmentBtnText: { fontSize: 13, fontWeight: "600", color: C.textSub },
   segmentBtnTextActive: { color: C.primary },
+  ingrPickerWrap: {
+    borderTopWidth: 1, borderTopColor: C.border,
+    backgroundColor: C.bg, paddingBottom: 2,
+  },
+  ingrPickerLabel: {
+    fontSize: 11, fontWeight: "700", color: C.textMuted,
+    paddingHorizontal: 14, paddingTop: 6,
+    textTransform: "uppercase", letterSpacing: 0.3,
+  },
+  ingrChip: {
+    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999,
+    borderWidth: 1.5, borderColor: C.primary, backgroundColor: C.primaryLt,
+  },
+  ingrChipText: { fontSize: 12, fontWeight: "700", color: C.primary },
 });

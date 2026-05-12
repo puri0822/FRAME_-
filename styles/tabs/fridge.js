@@ -144,4 +144,53 @@ export default StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   saveBtnText: { fontSize: 14, fontWeight: "700", color: "#fff" },
+  // 재료 추가 모달
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  sheet: {
+    backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    maxHeight: "90%",
+  },
+  modalHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
+    borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  modalTitle: { fontSize: 16, fontWeight: "700", color: C.text },
+  modalBody: { padding: 20 },
+  modalFooter: { padding: 20, paddingTop: 4 },
+  field: { gap: 8 },
+  fieldLabel: { fontSize: 12, fontWeight: "700", color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.3 },
+  textInput: {
+    height: 46, paddingHorizontal: 14, borderWidth: 1.5, borderColor: C.border,
+    borderRadius: 12, fontSize: 14, color: C.text, backgroundColor: C.surface,
+  },
+  catChip: {
+    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999,
+    borderWidth: 1.5, borderColor: C.border, backgroundColor: C.surface,
+  },
+  catChipActive: { borderColor: C.primary, backgroundColor: C.primaryLt },
+  catChipText: { fontSize: 13, fontWeight: "600", color: C.textSub },
+  catChipTextActive: { color: C.primary },
+  // 모달 탭 바
+  modalTabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: C.border },
+  modalTab: { flex: 1, height: 42, alignItems: "center", justifyContent: "center" },
+  modalTabActive: { borderBottomWidth: 2, borderBottomColor: C.primary },
+  modalTabText: { fontSize: 13, fontWeight: "600", color: C.textMuted },
+  modalTabTextActive: { color: C.primary },
+  // 카탈로그
+  catalogFilterBar: { borderBottomWidth: 1, borderBottomColor: C.border, height: 52, flexShrink: 0 },
+  catalogGrid: { flexDirection: "row", flexWrap: "wrap", padding: 12, gap: 8 },
+  catalogCard: {
+    width: "31%", alignItems: "center", paddingVertical: 10, paddingHorizontal: 4,
+    borderRadius: 12, borderWidth: 1.5, borderColor: C.border, backgroundColor: C.surface, gap: 4,
+  },
+  catalogCardAdded: { borderColor: C.primary, backgroundColor: C.primaryLt },
+  catalogEmoji: { fontSize: 26 },
+  catalogName: { fontSize: 11, fontWeight: "600", color: C.text, textAlign: "center" },
+  catalogCheck: {
+    position: "absolute", top: 5, right: 5,
+    width: 16, height: 16, borderRadius: 8,
+    backgroundColor: C.primary, alignItems: "center", justifyContent: "center",
+  },
+  catalogCheckText: { fontSize: 9, fontWeight: "800", color: "#fff" },
 });
