@@ -2118,6 +2118,64 @@ const Home = (() => {
       closeMenu();
     });
 
+    /* ── 마이크 버튼 (음성 인식) ── */
+    const micBtn = document.getElementById('chat-mic-btn');
+    const chatInput = document.getElementById('chat-input');
+    let mediaRecorder = null;
+    let audioChunks = [];
+
+    micBtn?.addEventListener('click', async () => {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+
+        micBtn.classList.add('recording');
+        micBtn.setAttribute('aria-label', '녹음 중지');
+
+        mediaRecorder.addEventListener('dataavailable', e => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        });
+
+        mediaRecorder.addEventListener('stop', async () => {
+          micBtn.classList.remove('recording');
+          micBtn.setAttribute('aria-label', '음성 인식');
+          stream.getTracks().forEach(t => t.stop());
+
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          appendMessage('🎤 음성 인식 중...', 'ai');
+
+          try {
+            const response = await fetch('/api/scan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'audio/webm' },
+              body: audioBlob
+            });
+            const data = await response.json();
+            if (data.transcript) {
+              document.getElementById('chat-typing')?.remove();
+              const lastAi = document.querySelectorAll('.chat-msg.chat-ai');
+              lastAi[lastAi.length - 1]?.remove();
+              if (chatInput) chatInput.value = data.transcript;
+            } else {
+              appendMessage('음성을 인식하지 못했어요. 다시 시도해주세요.', 'ai');
+            }
+          } catch {
+            appendMessage('음성 인식에 실패했어요. 다시 시도해주세요.', 'ai');
+          }
+        });
+
+        mediaRecorder.start();
+      } catch {
+        appendMessage('마이크 접근 권한이 필요합니다.', 'ai');
+      }
+    });
+
     /* ── 재료 선택 칩 ── */
     const ingredientChipsEl = document.getElementById('ingredient-chips');
     let isIngredientSelectorOpen = false;

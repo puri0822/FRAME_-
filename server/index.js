@@ -37,6 +37,22 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// 음성 인식 API
+app.post('/api/scan', express.raw({ type: 'audio/*', limit: '10mb' }), async (req, res) => {
+  try {
+    const audioBase64 = req.body.toString('base64');
+    const response = await fetch('https://4ur32pd547.execute-api.ap-northeast-2.amazonaws.com/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio: audioBase64 })
+    });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: '음성 인식 오류가 발생했습니다.' });
+  }
+});
+
 // SPA fallback
 app.get('*', (_req, res) =>
   res.sendFile(path.join(__dirname, '../yorijori/index.html'))
