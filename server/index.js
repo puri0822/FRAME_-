@@ -28,9 +28,7 @@ app.post('/api/chat', async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message })
     });
-    const raw = await response.text();
-    console.log('Lambda 응답 raw:', raw);
-    const data = JSON.parse(raw);
+    const data = await response.json();
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: '챗봇 오류가 발생했습니다.' });
