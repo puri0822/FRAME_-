@@ -2023,13 +2023,22 @@ const Home = (() => {
     appendMessage(text, 'user');
     showTyping();
 
-    // 800–1500ms 랜덤 지연으로 실제 응답 느낌 부여
-    const delay = 800 + Math.random() * 700;
-    setTimeout(() => {
-      sendBtn.disabled = false;
-      appendMessage(getFakeResponse(text), 'ai');
-      input.focus();
-    }, delay);
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text })
+    })
+      .then(res => res.json())
+      .then(data => {
+        sendBtn.disabled = false;
+        appendMessage(data.reply || '응답을 받지 못했어요.', 'ai');
+        input.focus();
+      })
+      .catch(() => {
+        sendBtn.disabled = false;
+        appendMessage('서버 연결에 실패했어요. 잠시 후 다시 시도해주세요.', 'ai');
+        input.focus();
+      });
   }
 
   /* ---------- 초기화 ---------- */
@@ -2041,7 +2050,7 @@ const Home = (() => {
 
     sendBtn?.addEventListener('click', sendMessage);
     input?.addEventListener('keydown', e => {
-      if (e.key === 'Enter') sendMessage();
+      if (e.key === 'Enter' && !e.isComposing) sendMessage();
     });
 
     /* ── 액션 메뉴 (+ 버튼) ── */
