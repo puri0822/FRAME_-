@@ -1084,6 +1084,22 @@ const TREND_DATA = [];
 /* =========================================
    Explore — 레시피 탐색 & 즐겨찾기
    ========================================= */
+/* =========================================
+   공용 헬퍼 — 레시피 이미지/이모지 렌더링
+   ========================================= */
+function setRecipeVisual(el, recipe) {
+  if (recipe.imageUrl) {
+    const img = document.createElement('img');
+    img.src = recipe.imageUrl;
+    img.alt = recipe.name;
+    img.className = 'recipe-thumb-img';
+    img.onerror = () => { el.removeChild(img); el.textContent = recipe.emoji || '🍽️'; };
+    el.appendChild(img);
+  } else {
+    el.textContent = recipe.emoji || '🍽️';
+  }
+}
+
 const Explore = (() => {
   const FAV_KEY = 'yorijori_favorites';
 
@@ -1259,7 +1275,7 @@ const Explore = (() => {
 
     const thumb = document.createElement('div');
     thumb.className = 'explore-card-thumb';
-    thumb.textContent = recipe.emoji;
+    setRecipeVisual(thumb, recipe);
 
     const body = document.createElement('div');
     body.className = 'explore-card-body';
@@ -1381,7 +1397,7 @@ const Explore = (() => {
 
     const emojiEl = document.createElement('div');
     emojiEl.className = 'reco-card-emoji';
-    emojiEl.textContent = recipe.emoji;
+    setRecipeVisual(emojiEl, recipe);
 
     const bookmarkBtn = document.createElement('button');
     bookmarkBtn.className = `reco-card-bookmark${favorites.has(recipe.id) ? ' active' : ''}`;
@@ -1496,7 +1512,7 @@ const Explore = (() => {
     // 이모지
     const emojiEl = document.createElement('div');
     emojiEl.className = 'trend-card-emoji';
-    emojiEl.textContent = recipe.emoji;
+    setRecipeVisual(emojiEl, recipe);
 
     // 불꽃 오버레이 (1~3위만)
     if (rank <= 3) {
@@ -2038,7 +2054,7 @@ const RecipeModal = (() => {
 
     const emojiEl = document.createElement('div');
     emojiEl.className = 'modal-recipe-emoji';
-    emojiEl.textContent = recipe.emoji;
+    setRecipeVisual(emojiEl, recipe);
 
     const info = document.createElement('div');
     info.className = 'modal-recipe-info';

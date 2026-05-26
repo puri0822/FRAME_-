@@ -7,13 +7,14 @@ const PAGE_SIZE = 100;
 
 // 식품안전나라 카테고리 → DB 카테고리 매핑
 const CATEGORY_MAP = {
-  '반찬':   '한식',
+  '반찬':   '반찬',
   '국&찌개': '국&찌개',
-  '후식':   '한식',
-  '간식':   '한식',
-  '주식':   '한식',
-  '일품':   '한식',
-  '기타':   '한식',
+  '후식':   '후식',
+  '간식':   '후식',
+  '밥':     '밥',
+  '주식':   '밥',
+  '일품':   '일품',
+  '기타':   '기타',
 };
 
 // 재료 텍스트에서 이름만 추출
@@ -51,11 +52,12 @@ function parseSteps(recipe) {
 // 카테고리가 없으면 삽입
 async function ensureCategories() {
   const categories = [
-    { id: '한식',     image_url: '/images/rcat/korean.png',      sort_order: 1 },
-    { id: '양식',     image_url: '/images/rcat/western.png',     sort_order: 5 },
-    { id: '국&찌개',  image_url: '/images/rcat/soup.png',        sort_order: 6 },
-    { id: '다이어트', image_url: '/images/rcat/diet.png',        sort_order: 4 },
-    { id: '간편식',   image_url: '/images/rcat/easy.png',        sort_order: 2 },
+    { id: '반찬',    image_url: '/images/rcat/banchan.png',  sort_order: 7  },
+    { id: '국&찌개', image_url: '/images/rcat/soup.png',     sort_order: 6  },
+    { id: '후식',    image_url: '/images/rcat/dessert.png',  sort_order: 10 },
+    { id: '밥',      image_url: '/images/rcat/rice.png',     sort_order: 9  },
+    { id: '일품',    image_url: '/images/rcat/ilpum.png',    sort_order: 8  },
+    { id: '기타',    image_url: '/images/rcat/etc.png',      sort_order: 11 },
   ];
   for (const cat of categories) {
     await db.query(
