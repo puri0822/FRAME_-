@@ -2640,6 +2640,7 @@ html, body {
 .sns-trend-strip::-webkit-scrollbar { display: none; }
 .sns-trend-strip > *:first-child { margin-left: 20px; }
 .sns-trend-strip > *:last-child  { margin-right: 20px; }
+.trend-empty { padding: 16px 20px; color: var(--text-secondary); font-size: 14px; }
 
 /* 트렌드 카드 */
 .trend-card {
@@ -2682,6 +2683,8 @@ html, body {
 }
 
 .trend-card-emoji {
+  width: 100%;
+  height: 100%;
   font-size: 40px;
   user-select: none;
   filter: drop-shadow(0 2px 6px rgba(0,0,0,0.12));
@@ -2859,6 +2862,8 @@ html, body {
 }
 
 .reco-card-emoji {
+  width: 100%;
+  height: 100%;
   font-size: 52px;
   line-height: 1;
   user-select: none;

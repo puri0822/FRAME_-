@@ -91,7 +91,7 @@ app.post('/api/chat', async (req, res) => {
         FROM recipe r
         WHERE r.is_published = 1 AND (${nameConds} OR ${ingrConds})
         GROUP BY r.id
-        LIMIT 5
+        LIMIT 3
       `, params);
       result.action = { type: 'RECIPE_SEARCH', recipes: rows, query: parsed.query };
     }

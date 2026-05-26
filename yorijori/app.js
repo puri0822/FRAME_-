@@ -1572,10 +1572,43 @@ const Explore = (() => {
     const strip = document.getElementById('sns-trend-strip');
     if (!strip) return;
     strip.innerHTML = '';
+    if (TREND_DATA.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'trend-empty';
+      empty.textContent = '트렌딩 레시피를 불러오는 중...';
+      strip.appendChild(empty);
+      return;
+    }
     TREND_DATA.forEach((trend, i) => {
       const card = buildTrendCard(trend, i + 1);
       if (card) strip.appendChild(card);
     });
+  }
+
+  async function loadTrending() {
+    const TAG_POOL = [
+      ['#SNS화제', '#쉬운요리'],
+      ['#인기급상승', '#오늘뭐먹지'],
+      ['#집밥', '#맛있어'],
+      ['#10분요리', '#간단레시피'],
+      ['#요리챌린지', '#밥스타그램'],
+    ];
+    try {
+      const res = await fetch('/api/recipes/trending');
+      if (!res.ok) return;
+      const recipes = await res.json();
+      TREND_DATA.length = 0;
+      recipes.forEach((r, i) => {
+        TREND_DATA.push({
+          recipeId: r.id,
+          count:    Math.floor(Math.random() * 350) + 80,
+          tags:     TAG_POOL[i % TAG_POOL.length],
+        });
+      });
+      renderTrendStrip();
+    } catch (e) {
+      console.error('[trending]', e);
+    }
   }
 
   function init() {
@@ -1608,7 +1641,7 @@ const Explore = (() => {
     }
   }
 
-  return { init, render, refreshRecos, toggleFavorite, isFavorite: id => favorites.has(id), filterByIngredients, clearFridgeFilter };
+  return { init, render, refreshRecos, toggleFavorite, isFavorite: id => favorites.has(id), filterByIngredients, clearFridgeFilter, loadTrending };
 })();
 
 
@@ -1987,9 +2020,78 @@ const Home = (() => {
     document.querySelectorAll('.quick-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         if (!input) return;
-        input.value = chip.dataset.text;
+        const chipText = chip.dataset.text;
+
+        // 냉장고 재료 관리: 현재 냉장고 목록 보여주고 추가/수정 안내
+        if (chipText.includes('냉장고 재료 관리')) {
+          appendMessage(chipText, 'user');
+          hideChips();
+          const items = Storage.get('yorijori_ingredients', []);
+          if (items.length === 0) {
+            appendMessage(
+              '냉장고가 비어있어요 🧊\n아래처럼 말씀해 주시면 재료를 바로 추가해 드릴게요!\n\n예) "오이 2개 넣어줘" / "당근이랑 계란 추가해줘"',
+              'ai'
+            );
+          } else {
+            const list = items.map(i => `• ${i.name || i}${i.count ? ' ' + i.count + '개' : ''}`).join('\n');
+            appendMessage(
+              `현재 냉장고 재료예요 🧊\n${list}\n\n재료를 추가하거나 수정하려면 말씀해 주세요!\n예) "당근 3개 추가해줘" / "우유 빼줘"`,
+              'ai'
+            );
+          }
+          showChips();
+          return;
+        }
+
+        // 추천 레시피: 냉장고 재료 기반으로 API에 레시피 검색 요청
+        if (chipText.includes('추천 레시피')) {
+          const items = Storage.get('yorijori_ingredients', []);
+          if (items.length === 0) {
+            appendMessage(chipText, 'user');
+            appendMessage(
+              '냉장고에 재료가 없어요 🧊\n"냉장고 재료 관리"를 눌러 재료를 추가하거나 냉장고 탭에서 등록해 주세요!',
+              'ai'
+            );
+            showChips();
+            return;
+          }
+          const names = items.map(i => i.name || i).join(', ');
+          input.value = `냉장고에 ${names} 있어. 이 재료로 만들 수 있는 레시피 추천해줘`;
+          sendMessage();
+          showChips();
+          return;
+        }
+
+        // 인기 요리: SNS 트렌딩 레시피를 채팅창에 카드로 표시
+        if (chipText.includes('인기 요리')) {
+          appendMessage(chipText, 'user');
+          hideChips();
+          showTyping();
+          fetch('/api/recipes/trending')
+            .then(res => res.json())
+            .then(recipes => {
+              appendMessage('지금 SNS에서 인기 있는 레시피예요 🔥', 'ai');
+              const mapped = recipes.slice(0, 3).map(r => ({
+                id:             r.id,
+                name:           r.name,
+                cook_time_min:  r.time,
+                difficulty:     r.difficulty,
+                key_ingredients: JSON.stringify(r.keyIngredients || []),
+              }));
+              appendRecipeCards(mapped);
+              showChips();
+            })
+            .catch(() => {
+              appendMessage('인기 레시피를 불러오지 못했어요. 잠시 후 다시 시도해주세요.', 'ai');
+              showChips();
+            });
+          return;
+        }
+
+        // 기본: 그대로 전송
+        input.value = chipText;
         sendMessage();
-        showChips(); // 전송 후 칩 다시 표시
+        showChips();
       });
     });
   }
@@ -2699,8 +2801,11 @@ document.addEventListener('DOMContentLoaded', () => {
   Settings.init();
   initChips();
 
-  // DB 레시피 비동기 로드 → 완료 후 탐색 탭 재렌더
-  Api.loadRecipes().then(() => Explore.render());
+  // DB 레시피 비동기 로드 → 완료 후 탐색 탭 재렌더 + 트렌딩 로드
+  Api.loadRecipes().then(() => {
+    Explore.render();
+    Explore.loadTrending();
+  });
 
   // 냉장고 레시피 검색 버튼 클릭
   document.getElementById('fridge-recipe-search-btn')
