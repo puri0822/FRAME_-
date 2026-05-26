@@ -45,13 +45,12 @@ const Api = (() => {
     return res.json();
   }
 
-  /** DB 레시피 전체 로드 후 RECIPES 배열에 병합 */
+  /** DB 레시피 전체 로드 */
   async function loadRecipes() {
     try {
       const dbRecipes = await get('/recipes');
-      // 이미 있는 id는 건너뜀 (로컬 하드코딩과 중복 방지)
-      const existingIds = new Set(RECIPES.map(r => r.id));
-      dbRecipes.forEach(r => { if (!existingIds.has(r.id)) RECIPES.push(r); });
+      RECIPES.length = 0;
+      dbRecipes.forEach(r => RECIPES.push(r));
     } catch (e) {
       console.warn('API 레시피 로드 실패 (오프라인 모드):', e.message);
     }
@@ -1011,7 +1010,7 @@ const Fridge = (() => {
       .map(i => i.name);
   }
 
-  return { init, updateRecipeSearchBtn, getSelectedNames };
+  return { init, updateRecipeSearchBtn, getSelectedNames, add, render };
 })();
 
 
@@ -1060,350 +1059,26 @@ function createEmptyState(icon, title, desc) {
 
 
 /* =========================================
-   레시피 더미 데이터
+   레시피 데이터 (API에서 로드)
    ========================================= */
-const RECIPES = [
-  {
-    id: 1,
-    emoji: '🍙',
-    name: '참치마요 주먹밥',
-    category: '간편식',
-    ingredients: ['참치캔', '마요네즈', '밥', '김', '소금', '참기름'],
-    keyIngredients: ['참치캔', '밥'],
-    time: 10,
-    difficulty: '쉬움',
-    instructions: [
-      '참치캔의 기름을 체에 밭쳐 충분히 빼요.',
-      '그릇에 참치, 마요네즈, 소금을 넣고 잘 섞어요.',
-      '손에 물을 적당히 묻히고 밥을 손바닥에 펴요.',
-      '중앙에 참치마요를 넣고 꼭꼭 쥐어 주먹밥 모양을 만들어요.',
-      '김으로 감싸고 참기름을 한 방울 떨어뜨리면 완성!',
-    ],
-    youtube_title: '참치마요 주먹밥 만들기 | 초간단 10분 레시피',
-    likes: 2418,
-    rating: 4.2,
-  },
-  {
-    id: 2,
-    emoji: '🍜',
-    name: '편의점 라면 나베',
-    category: '편의점 꿀조합',
-    ingredients: ['컵라면', '두부', '계란', '대파', '어묵'],
-    keyIngredients: ['컵라면', '두부'],
-    time: 15,
-    difficulty: '쉬움',
-    instructions: [
-      '냄비에 물 500ml를 넣고 센 불로 끓여요.',
-      '어묵과 두부를 한 입 크기로 잘라 넣어요.',
-      '컵라면 면과 스프를 냄비에 넣고 3분 끓여요.',
-      '대파를 어슷 썰어 넣고 계란을 깨뜨려 반숙으로 익혀요.',
-      '뚝배기에 담으면 더욱 분위기 있는 나베 완성!',
-    ],
-    youtube_title: '편의점 라면 나베 | 간단하지만 진짜 맛있는 혼밥 레시피',
-    likes: 1092,
-    rating: 3.9,
-  },
-  {
-    id: 3,
-    emoji: '🍳',
-    name: '냉장고 털이 볶음밥',
-    category: '한식',
-    ingredients: ['찬밥', '계란', '냉동 채소', '간장', '참기름', '마늘'],
-    keyIngredients: ['찬밥', '계란'],
-    time: 15,
-    difficulty: '쉬움',
-    instructions: [
-      '팬을 센 불로 달구고 기름을 두른 뒤 다진 마늘을 볶아요.',
-      '냉동 채소를 넣고 수분이 날아갈 때까지 2분 볶아요.',
-      '찬밥을 넣고 주걱으로 꾹꾹 눌러 가며 덩어리를 풀어요.',
-      '팬 가장자리에 간장을 두르고 빠르게 섞어요.',
-      '한쪽으로 볶음밥을 밀고 계란을 스크램블해 섞어요.',
-      '불을 끄고 참기름을 한 방울 두르면 완성!',
-    ],
-    youtube_title: '냉장고 털이 볶음밥 | 자투리 재료로 만드는 황금 볶음밥',
-    likes: 5731,
-    rating: 4.8,
-  },
-  {
-    id: 4,
-    emoji: '🥚',
-    name: '고추참치 계란말이',
-    category: '한식',
-    ingredients: ['고추참치캔', '계란', '쪽파', '소금', '식용유'],
-    keyIngredients: ['고추참치캔', '계란'],
-    time: 15,
-    difficulty: '보통',
-    instructions: [
-      '계란 3개를 그릇에 깨고 소금 한 꼬집을 넣어 잘 풀어요.',
-      '고추참치캔 기름을 빼고 쪽파를 잘게 썰어 계란물에 섞어요.',
-      '팬에 기름을 얇게 두르고 약불로 달구어요.',
-      '계란물의 절반을 붓고 표면이 반 정도 익으면 앞쪽으로 말아요.',
-      '나머지 계란물을 부어 같은 방법으로 말아서 통통한 롤을 만들어요.',
-      '한 김 식힌 후 먹기 좋게 썰면 완성!',
-    ],
-    youtube_title: '고추참치 계란말이 | 초보도 쉬운 밥도둑 반찬',
-    likes: 847,
-    rating: 3.7,
-  },
-  {
-    id: 5,
-    emoji: '🍱',
-    name: '떡볶이 치즈 덮밥',
-    category: '편의점 꿀조합',
-    ingredients: ['냉동 떡볶이', '밥', '슬라이스 치즈', '마요네즈'],
-    keyIngredients: ['냉동 떡볶이', '밥'],
-    time: 10,
-    difficulty: '쉬움',
-    instructions: [
-      '냉동 떡볶이를 전자레인지 4분 또는 팬에 물 조금 넣어 데워요.',
-      '따뜻한 밥을 그릇에 담고 떡볶이를 듬뿍 올려요.',
-      '슬라이스 치즈를 올리고 전자레인지에 30초 돌려 치즈를 녹여요.',
-      '마요네즈를 지그재그로 뿌리면 완성!',
-    ],
-    youtube_title: '떡볶이 치즈 덮밥 | 5분 완성 초간편 한 끼',
-    likes: 3256,
-    rating: 4.5,
-  },
-  {
-    id: 6,
-    emoji: '🥩',
-    name: '스팸 마늘종 볶음',
-    category: '한식',
-    ingredients: ['스팸', '마늘종', '고추장', '간장', '올리고당', '참기름'],
-    keyIngredients: ['스팸', '마늘종'],
-    time: 20,
-    difficulty: '보통',
-    instructions: [
-      '스팸을 한 입 크기 직육면체로 잘라요.',
-      '마늘종을 3~4cm 길이로 잘라요.',
-      '팬에 기름을 두르지 않고 스팸을 노릇하게 구워 꺼내요.',
-      '같은 팬에 마늘종을 볶다가 스팸을 다시 넣어요.',
-      '고추장, 간장, 올리고당(1:1:1)을 섞어 소스를 만들어 넣고 볶아요.',
-      '불을 끄고 참기름 한 방울로 마무리하면 완성!',
-    ],
-    youtube_title: '스팸 마늘종 볶음 | 밥 세 공기 각오하세요',
-    likes: 1604,
-    rating: 4.1,
-  },
-  {
-    id: 7,
-    emoji: '🥬',
-    name: '두부 간장 조림',
-    category: '다이어트',
-    ingredients: ['두부', '간장', '설탕', '참기름', '대파', '고춧가루'],
-    keyIngredients: ['두부', '간장'],
-    time: 20,
-    difficulty: '쉬움',
-    instructions: [
-      '두부를 1.5cm 두께로 썰고 키친타월로 물기를 제거해요.',
-      '팬에 기름을 두르고 중불에서 두부를 앞뒤로 노릇하게 구워요.',
-      '간장 3 : 설탕 1 : 물 3 비율로 양념을 만들어요.',
-      '구운 두부에 양념을 붓고 조려요.',
-      '국물이 반으로 줄면 대파와 고춧가루를 뿌려요.',
-      '참기름 한 방울로 마무리하면 완성!',
-    ],
-    youtube_title: '두부 간장 조림 | 건강하고 맛있는 기본 반찬',
-    likes: 2973,
-    rating: 4.3,
-  },
-  {
-    id: 8,
-    emoji: '🥞',
-    name: '김치 치즈 부침개',
-    category: '한식',
-    ingredients: ['묵은 김치', '슬라이스 치즈', '부침가루', '계란', '식용유'],
-    keyIngredients: ['묵은 김치', '부침가루'],
-    time: 20,
-    difficulty: '보통',
-    instructions: [
-      '묵은 김치를 잘게 다지고 국물은 꼭 짜요.',
-      '계란 1개, 부침가루 4큰술, 물 3큰술을 넣고 반죽해요.',
-      '반죽에 다진 김치를 넣어 섞어요.',
-      '팬에 기름을 두르고 반죽을 동그랗게 펴서 앞면을 구워요.',
-      '뒤집은 후 슬라이스 치즈를 올리고 뚜껑을 덮어 치즈를 녹여요.',
-      '노릇하게 익으면 접시에 담아 완성!',
-    ],
-    youtube_title: '김치 치즈 부침개 | 바삭하고 쫄깃한 황금 레시피',
-    likes: 4187,
-    rating: 4.6,
-  },
-  {
-    id: 9,
-    emoji: '🥔',
-    name: '감자 베이컨 볶음',
-    category: '양식',
-    ingredients: ['감자', '베이컨', '양파', '버터', '소금', '후추'],
-    keyIngredients: ['감자', '베이컨'],
-    time: 25,
-    difficulty: '보통',
-    instructions: [
-      '감자 껍질을 벗기고 얇게 슬라이스하거나 채 썰어요.',
-      '양파는 얇게 채 썰고, 베이컨은 2cm 폭으로 잘라요.',
-      '팬에 버터를 녹이고 감자를 중불에서 볶아요.',
-      '감자가 반 정도 익으면 베이컨과 양파를 넣어요.',
-      '소금, 후추로 간하고 감자가 완전히 익을 때까지 볶아요.',
-      '기호에 따라 파슬리를 뿌리면 서양식 감자 볶음 완성!',
-    ],
-    youtube_title: '감자 베이컨 볶음 | 집에서 만드는 브런치 레시피',
-    likes: 623,
-    rating: 3.6,
-  },
-  {
-    id: 10,
-    emoji: '🍵',
-    name: '삼각김밥 된장국',
-    category: '간편식',
-    ingredients: ['참치 삼각김밥', '된장', '두부', '대파', '멸치다시마'],
-    keyIngredients: ['참치 삼각김밥', '된장'],
-    time: 10,
-    difficulty: '쉬움',
-    instructions: [
-      '냄비에 물 400ml와 멸치다시마를 넣고 5분 끓여 육수를 내요.',
-      '다시마와 멸치를 건져내고 두부를 깍둑 썰어 넣어요.',
-      '된장 1.5큰술을 체에 풀어 넣고 중불로 끓여요.',
-      '대파를 어슷 썰어 넣고 한 번 더 끓이면 된장국 완성.',
-      '삼각김밥을 그릇에 담고 된장국과 함께 먹으면 든든한 한 끼!',
-    ],
-    youtube_title: '삼각김밥 된장국 | 5분 만에 만드는 따뜻한 한 끼',
-    likes: 1341,
-    rating: 4.0,
-  },
-];
+const RECIPES = [];
+
 
 
 /* =========================================
-   레시피 리뷰 더미 데이터
+   레시피 리뷰 더미 데이터 (제거됨)
    ========================================= */
-const RECIPE_REVIEWS = {
-  1: [
-    { user: '김민지', rating: 5, photo: '🍙', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '아이들이 너무 좋아해서 자주 만들어요. 참기름 한 방울이 진짜 포인트예요!' },
-    { user: '이준호', rating: 4, photo: '😋', grad: 'linear-gradient(135deg,#FEF3C7,#FDE68A)', text: '간단하고 맛있어요. 다음엔 명란 버전으로도 도전해볼게요.' },
-    { user: '박수아', rating: 5, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '도시락으로 싸갔더니 친구들이 레시피 달라고 난리였어요!' },
-  ],
-  2: [
-    { user: '최현우', rating: 4, photo: '🍜', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '혼밥할 때 최고예요. 어묵을 듬뿍 넣으니 더 맛있었어요.' },
-    { user: '정나연', rating: 3, photo: '🥚', grad: 'linear-gradient(135deg,#FFF7ED,#FED7AA)', text: '생각보다 짤 수 있으니 스프 양 조절이 필요해요.' },
-    { user: '강지민', rating: 5, photo: '🔥', grad: 'linear-gradient(135deg,#FFF1F2,#FFE4E6)', text: '야식으로 이만한 게 없어요! 치즈 추가하면 금상첨화.' },
-  ],
-  3: [
-    { user: '윤서현', rating: 5, photo: '🍳', grad: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', text: '볶음밥은 이 레시피가 정석인 것 같아요. 간장 둘러주는 타이밍이 핵심!' },
-    { user: '임도현', rating: 5, photo: '🌶️', grad: 'linear-gradient(135deg,#FFF1F2,#FECDD3)', text: '냉장고 정리도 되고 맛도 있고 일석이조예요. 자주 해먹어요.' },
-    { user: '한소희', rating: 4, photo: '🥬', grad: 'linear-gradient(135deg,#ECFDF5,#BBF7D0)', text: '스크램블 단계가 약간 어렵지만 맛은 최고예요!' },
-  ],
-  4: [
-    { user: '오지훈', rating: 4, photo: '🥚', grad: 'linear-gradient(135deg,#FFF7ED,#FFEDD5)', text: '고추참치 한 캔이면 충분해요. 촉촉하게 말리는 게 포인트.' },
-    { user: '신예린', rating: 3, photo: '🍱', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '처음엔 잘 안 말렸는데 두 번째엔 성공! 연습이 필요해요.' },
-    { user: '백지우', rating: 5, photo: '🌿', grad: 'linear-gradient(135deg,#FFFBEB,#FDE68A)', text: '밥도둑이 따로 없어요. 쪽파를 많이 넣을수록 더 맛있어요!' },
-  ],
-  5: [
-    { user: '류하은', rating: 5, photo: '🍱', grad: 'linear-gradient(135deg,#FFF1F2,#FECDD3)', text: '냉동 떡볶이로 이렇게 맛있는 게 되다니! 치즈 녹이는 순간 감동.' },
-    { user: '조민재', rating: 4, photo: '🧀', grad: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', text: '간단하고 빠르게 만들 수 있어서 자취생 필수 레시피예요.' },
-    { user: '서지유', rating: 5, photo: '🌶️', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '마요네즈 위에 청양고추 올리면 매콤달콤 최고 조합!' },
-  ],
-  6: [
-    { user: '문서준', rating: 5, photo: '🥩', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '스팸을 기름 없이 굽는 게 포인트예요. 노릇하게 구워야 제맛!' },
-    { user: '권지아', rating: 4, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#BBF7D0)', text: '마늘종이 아삭아삭해서 식감이 너무 좋아요. 밥 두 공기 먹었어요.' },
-    { user: '남현준', rating: 4, photo: '🍚', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '올리고당 대신 꿀을 넣어봤는데 더 맛있었어요!' },
-  ],
-  7: [
-    { user: '안지현', rating: 5, photo: '🥬', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '다이어트 중에 발견한 최고의 레시피예요. 포만감도 높아요.' },
-    { user: '황도윤', rating: 5, photo: '🌿', grad: 'linear-gradient(135deg,#FFFBEB,#FDE68A)', text: '두부를 단단하게 굽는 게 핵심이에요. 국물이 반으로 줄면 꺼내면 돼요!' },
-    { user: '송유진', rating: 4, photo: '🍱', grad: 'linear-gradient(135deg,#FFF1F2,#FFE4E6)', text: '고춧가루 좀 더 넣으니 매콤해서 더 맛있었어요. 밥반찬으로 딱이에요.' },
-  ],
-  8: [
-    { user: '전하린', rating: 5, photo: '🧀', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '치즈가 녹으면서 김치의 매운맛이 중화되는 게 신기해요. 완벽해요!' },
-    { user: '김태양', rating: 5, photo: '🌶️', grad: 'linear-gradient(135deg,#FFF1F2,#FECDD3)', text: '묵은 김치로 하면 훨씬 맛있어요. 반죽이 얇을수록 바삭해요.' },
-    { user: '이채원', rating: 4, photo: '🍳', grad: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', text: '겉은 바삭 속은 쫄깃해요. 치즈는 2장 넣는 게 더 맛있는 것 같아요!' },
-  ],
-  9: [
-    { user: '박세진', rating: 4, photo: '🥔', grad: 'linear-gradient(135deg,#FFFBEB,#FDE68A)', text: '버터 향이 정말 좋아요. 감자는 얇게 썰어야 골고루 익어요.' },
-    { user: '최아름', rating: 3, photo: '🥓', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '맛은 있는데 감자 익히는 시간이 생각보다 길어요. 약불이 포인트예요.' },
-    { user: '윤민호', rating: 4, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#BBF7D0)', text: '브런치로 딱이에요! 파슬리 뿌리면 카페 느낌 나서 좋았어요.' },
-  ],
-  10: [
-    { user: '정소윤', rating: 4, photo: '🍵', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '10분 만에 만들었는데 진짜 된장국 느낌이에요. 간이 딱 맞아요.' },
-    { user: '홍준서', rating: 4, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '편의점 재료로 이런 퀄리티가 나오다니 신기해요. 자취생 강추!' },
-    { user: '김다은', rating: 5, photo: '🍙', grad: 'linear-gradient(135deg,#FFF7ED,#FFEDD5)', text: '삼각김밥이 국물에 녹아서 밥이 자연스럽게 말려요. 이거 완전 꿀팁!' },
-  ],
-};
+const RECIPE_REVIEWS = {};
 
 /* =========================================
-   레시피 텍스트 리뷰 더미 데이터
+   레시피 텍스트 리뷰 더미 데이터 (제거됨)
    ========================================= */
-const RECIPE_TEXT_REVIEWS = {
-  1: [
-    { user: '노을빛주방',  rating: 4, date: '2025.11.02', text: '생각보다 훨씬 간단해요. 밥이 따뜻할 때 바로 만들어야 잘 뭉쳐져요.' },
-    { user: '혼밥러v',    rating: 5, date: '2025.10.28', text: '참기름 넣으니까 고급진 맛이 나요. 김을 가위로 잘라 감싸면 더 편해요.' },
-    { user: '자취9년차',  rating: 4, date: '2025.10.15', text: '마요네즈 양 조절이 포인트예요. 적게 넣으면 퍽퍽하고 많으면 느끼해요.' },
-    { user: '쿡쿡이',     rating: 3, date: '2025.09.30', text: '처음 해봤는데 모양 잡기가 좀 어렵네요. 맛은 합격점이에요!' },
-  ],
-  2: [
-    { user: '야식킹',     rating: 5, date: '2025.11.05', text: '밤에 혼자 먹기 딱 좋아요. 어묵 넉넉히 넣으면 진짜 나베 느낌!' },
-    { user: '컵라면탈출', rating: 3, date: '2025.10.22', text: '스프 반만 넣는 게 나아요. 두부는 미리 한 번 구우면 식감이 더 좋아요.' },
-    { user: '자취새내기',  rating: 4, date: '2025.10.09', text: '재료비가 거의 안 들어서 좋아요. 대파 넣는 타이밍을 마지막에 해야 아삭해요.' },
-    { user: 'ramen_lover', rating: 4, date: '2025.09.18', text: '계란 반숙 맞추기가 살짝 어렵지만 완성되면 완전 맛있어요!' },
-  ],
-  3: [
-    { user: '냉장고털이왕', rating: 5, date: '2025.11.08', text: '이 레시피 알고 나서 찬밥 버린 적이 없어요. 간장 타이밍이 진짜 핵심이에요.' },
-    { user: '매일볶음밥',   rating: 5, date: ''           + '2025.10.31', text: '팬 충분히 달구는 게 제일 중요해요. 연기 날 정도로 달궈야 볶음밥 특유의 향이 나요.' },
-    { user: '요리초보졸업', rating: 4, date: '2025.10.19', text: '냉동채소 대신 신선한 야채 썰어 넣으니 훨씬 맛있었어요.' },
-    { user: '주부9단',      rating: 5, date: '2025.10.03', text: '스크램블 단계에서 버터 살짝 더 넣으면 고소함이 두 배예요!' },
-  ],
-  4: [
-    { user: '반찬요정',   rating: 4, date: '2025.11.01', text: '고추참치 한 캔이면 양이 딱 맞아요. 약불로 천천히 말아야 터지지 않아요.' },
-    { user: '도시락쌤',   rating: 5, date: '2025.10.26', text: '도시락 단골 메뉴가 됐어요. 한 번에 두 줄 만들어서 냉장 보관해요.' },
-    { user: '계란요리전문', rating: 3, date: '2025.10.13', text: '처음엔 계란이 터져서 실패했어요. 불 세기 조절이 관건이에요.' },
-    { user: '밥도둑사냥꾼', rating: 5, date: '2025.09.27', text: '이거 먹고 밥 두 공기 뚝딱했어요. 쪽파 넉넉히 넣을수록 향이 좋아요!' },
-  ],
-  5: [
-    { user: '편의점셰프',   rating: 5, date: '2025.11.06', text: '냉동 떡볶이 브랜드마다 맛이 달라서 달달한 걸로 고르는 게 포인트예요.' },
-    { user: '자취 3년',     rating: 4, date: '2025.10.29', text: '치즈 두 장 넣으면 더 진해요. 마요네즈 격자 무늬로 뿌리면 예쁘게 나와요.' },
-    { user: '혼밥마스터',   rating: 5, date: '2025.10.16', text: '10분 안에 완성되는 퀄리티가 아니에요. 진짜 식당 수준이에요!' },
-    { user: 'cheesy_cook',  rating: 4, date: '2025.10.04', text: '고추장 한 숟갈 추가하면 더 맛있어요. 매콤달콤 조합이 최고예요.' },
-  ],
-  6: [
-    { user: '스팸러버',     rating: 5, date: '2025.11.03', text: '스팸을 기름 없이 굽는 게 처음엔 낯설었는데 훨씬 바삭하게 나와요.' },
-    { user: '반찬 블로거',  rating: 4, date: '2025.10.21', text: '마늘종은 살짝 아삭한 정도가 딱 좋아요. 너무 오래 볶으면 흐물해져요.' },
-    { user: '밑반찬전문가', rating: 4, date: '2025.10.08', text: '소스 비율 1:1:1이 황금 비율 맞아요. 달달하고 짭짤한 게 딱이에요.' },
-    { user: 'kfood_daily',  rating: 5, date: '2025.09.25', text: '만들어서 3일 냉장 보관해도 맛 유지돼요. 밑반찬으로 최고예요!' },
-  ],
-  7: [
-    { user: '다이어터',     rating: 5, date: '2025.11.07', text: '칼로리 낮으면서 이렇게 맛있는 반찬은 처음이에요. 단백질도 충분해요.' },
-    { user: '헬시라이프',   rating: 5, date: '2025.10.30', text: '두부 물기 제거가 핵심이에요. 꼭 키친타월로 꾹꾹 눌러줘야 해요.' },
-    { user: '식단관리중',   rating: 4, date: '2025.10.17', text: '간장 양을 레시피보다 살짝 줄였는데 더 담백해서 좋았어요.' },
-    { user: '두부요리탐구', rating: 4, date: '2025.10.05', text: '대파 대신 청양고추 올리면 매콤한 버전이 돼요. 이게 더 맛있어요!' },
-  ],
-  8: [
-    { user: '김치요리왕',   rating: 5, date: '2025.11.04', text: '묵은 김치 버리려다 이 레시피 보고 살렸어요. 진짜 맛있어요!' },
-    { user: '부침개장인',   rating: 5, date: '2025.10.23', text: '반죽 두께를 얇게 할수록 바삭해요. 치즈는 뒤집은 직후 올려야 잘 녹아요.' },
-    { user: '주말요리어',   rating: 4, date: '2025.10.11', text: '막걸리랑 먹으면 궁합이 완벽해요. 주말 점심으로 자주 만들어요.' },
-    { user: 'kimchi_fan',   rating: 5, date: '2025.09.29', text: '냉장고에 남은 묵은 김치 처리에 이만한 레시피가 없어요!' },
-  ],
-  9: [
-    { user: '감자요리덕후', rating: 4, date: '2025.11.02', text: '감자 두께가 균일해야 골고루 익어요. 채칼 쓰는 게 편해요.' },
-    { user: '브런치카페',   rating: 4, date: '2025.10.25', text: '버터 넉넉히 써야 고소함이 살아나요. 소금은 마지막에 넣어야 해요.' },
-    { user: '아침요리왕',   rating: 3, date: '2025.10.12', text: '감자가 잘 익는지 확인하면서 볶아야 해요. 타이밍 잡는 게 처음엔 어려워요.' },
-    { user: '홈카페_cook',  rating: 5, date: '2025.10.01', text: '로즈마리 살짝 올리면 레스토랑 느낌 나요. 강력 추천이에요!' },
-  ],
-  10: [
-    { user: '편의점고수',   rating: 4, date: '2025.11.05', text: '냉동 삼각김밥 말고 일반 삼각김밥도 잘 어울려요. 국물이 진해져서 좋아요.' },
-    { user: '자취끝판왕',   rating: 5, date: '2025.10.27', text: '5분 만에 이런 된장국이 나온다니 신기해요. 멸치다시마 우리는 게 진짜 중요해요.' },
-    { user: '국물요리팬',   rating: 4, date: '2025.10.14', text: '두부 넉넉히 넣으면 더 든든해요. 대파는 마지막에 넣어야 향이 살아요.' },
-    { user: '혼밥가이드',   rating: 5, date: '2025.09.28', text: '아침마다 해먹고 있어요. 국물이 진하고 깔끔해서 속이 편해요!' },
-  ],
-};
+const RECIPE_TEXT_REVIEWS = {};
 
 /* =========================================
    SNS 트렌딩 데이터
    ========================================= */
-const TREND_DATA = [
-  { recipeId: 3,  count: '3,241', tags: ['#오늘뭐먹지', '#간편한식'] },
-  { recipeId: 1,  count: '2,847', tags: ['#SNS화제',   '#냉털볶']   },
-  { recipeId: 8,  count: '1,923', tags: ['#집밥',       '#김치요리'] },
-  { recipeId: 5,  count: '1,520', tags: ['#편의점요리', '#5분완성']  },
-  { recipeId: 7,  count: '1,108', tags: ['#다이어트',   '#헬시푸드'] },
-  { recipeId: 2,  count:   '987', tags: ['#야식',       '#간식']     },
-];
+const TREND_DATA = [];
 
 
 /* =========================================
@@ -1995,6 +1670,44 @@ const Home = (() => {
     return '흠, 잘 모르겠어요 😅\n레시피 탐색 탭에서 직접 검색해 보시거나,\n냉장고 재료를 등록하면 맞춤 추천을 드릴 수 있어요!';
   }
 
+  /* ---------- 레시피 카드 표시 ---------- */
+
+  function appendRecipeCards(recipes) {
+    const messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl) return;
+    if (!recipes || recipes.length === 0) return;
+
+    const msg = document.createElement('div');
+    msg.className = 'chat-msg chat-ai';
+
+    const avatar = document.createElement('span');
+    avatar.className = 'chat-avatar';
+    avatar.textContent = '🤖';
+    msg.appendChild(avatar);
+
+    const cards = document.createElement('div');
+    cards.className = 'chat-recipe-cards';
+
+    recipes.forEach(r => {
+      let keys = [];
+      try { keys = JSON.parse(r.key_ingredients || '[]'); } catch { keys = []; }
+
+      const card = document.createElement('div');
+      card.className = 'chat-recipe-card';
+      card.innerHTML = `
+        <div class="chat-recipe-name">${r.name}</div>
+        <div class="chat-recipe-meta">⏱ ${r.cook_time_min}분 · ${r.difficulty}</div>
+        ${keys.length ? `<div class="chat-recipe-ingredients">${keys.slice(0, 4).join(', ')}</div>` : ''}
+      `;
+      card.addEventListener('click', () => RecipeModal.open(r.id));
+      cards.appendChild(card);
+    });
+
+    msg.appendChild(cards);
+    messagesEl.appendChild(msg);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
   /* ---------- 채팅 메시지 추가 ---------- */
 
   function appendMessage(text, role) {
@@ -2067,6 +1780,18 @@ const Home = (() => {
       .then(data => {
         sendBtn.disabled = false;
         appendMessage(data.reply || '응답을 받지 못했어요.', 'ai');
+
+        if (data.action) {
+          if (data.action.type === 'FRIDGE_SAVE' && Array.isArray(data.action.items)) {
+            data.action.items.forEach(item => {
+              Fridge.add(item.name, item.category || '채소/과일', '', item.count || 1);
+            });
+            Fridge.render();
+          } else if (data.action.type === 'RECIPE_SEARCH') {
+            appendRecipeCards(data.action.recipes);
+          }
+        }
+
         input.focus();
       })
       .catch(() => {

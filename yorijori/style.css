@@ -2234,6 +2234,45 @@ html, body {
   border-top-right-radius: 5px;
 }
 
+/* 챗봇 레시피 카드 */
+.chat-recipe-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 260px;
+}
+
+.chat-recipe-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.chat-recipe-card:active {
+  background: var(--color-primary-lt);
+}
+
+.chat-recipe-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+
+.chat-recipe-meta {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+}
+
+.chat-recipe-ingredients {
+  font-size: 0.75rem;
+  color: var(--color-text-sub);
+}
+
 /* 타이핑 인디케이터 */
 .typing-dots {
   display: flex;
