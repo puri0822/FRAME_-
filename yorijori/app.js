@@ -2655,11 +2655,14 @@ const Settings = (() => {
     const userInfo = document.getElementById('google-user-info');
     if (userInfo) {
       if (isLoggedIn && currentUser) {
+        const displayName = currentUser.nickname || currentUser.name || currentUser.email;
         userInfo.hidden = false;
         userInfo.innerHTML = `
-          <img src="${currentUser.picture}" alt="프로필" style="width:32px;height:32px;border-radius:50%;vertical-align:middle;margin-right:8px;">
-          <span style="font-size:14px;">${currentUser.name}</span>
+          <img src="${currentUser.picture || ''}" alt="프로필" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">
+          <span style="flex:1;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${displayName}</span>
+          <button id="nickname-edit-btn" style="flex-shrink:0;padding:5px 10px;font-size:12px;border:1px solid #FF6B35;border-radius:8px;background:transparent;color:#FF6B35;cursor:pointer;">닉네임 설정</button>
         `;
+        document.getElementById('nickname-edit-btn').addEventListener('click', openNicknameModal);
       } else {
         userInfo.hidden = true;
         userInfo.innerHTML = '';
@@ -2753,6 +2756,39 @@ const Settings = (() => {
       } else {
         console.warn('[google login] 버튼 아직 미준비');
       }
+    });
+  }
+
+  function openNicknameModal() {
+    const current = currentUser.nickname || currentUser.name || '';
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:#1e1e1e;border-radius:16px;padding:24px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+        <h3 style="margin:0 0 16px;font-size:16px;color:#fff;">닉네임 설정</h3>
+        <input id="nickname-input" type="text" maxlength="20" value="${current}"
+          style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid #444;background:#2a2a2a;color:#fff;font-size:14px;outline:none;">
+        <p style="margin:6px 0 20px;font-size:11px;color:#888;">최대 20자</p>
+        <div style="display:flex;gap:8px;">
+          <button id="nickname-cancel-btn" style="flex:1;padding:10px;border-radius:10px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer;font-size:14px;">취소</button>
+          <button id="nickname-save-btn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#FF6B35;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">저장</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById('nickname-input').focus();
+
+    document.getElementById('nickname-cancel-btn').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    document.getElementById('nickname-save-btn').addEventListener('click', () => {
+      const newNickname = document.getElementById('nickname-input').value.trim();
+      if (!newNickname) { alert('닉네임을 입력해주세요.'); return; }
+      currentUser.nickname = newNickname;
+      Storage.set(USER_KEY, currentUser);
+      overlay.remove();
+      renderLoginSection();
+      alert('닉네임이 저장됐어요!');
     });
   }
 
