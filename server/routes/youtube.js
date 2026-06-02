@@ -10,7 +10,7 @@ router.get('/search', async (req, res) => {
   const apiKey = process.env.YOUTUBE_API_KEY;
 
   try {
-    const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q + ' 레시피')}&type=video&maxResults=3&order=viewCount&regionCode=KR&relevanceLanguage=ko&key=${apiKey}`;
+    const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q + ' 레시피')}&type=video&maxResults=3&order=relevance&regionCode=KR&relevanceLanguage=ko&key=${apiKey}`;
     const response = await fetch(apiUrl);
     const data = await response.json();
 
