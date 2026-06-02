@@ -2692,16 +2692,26 @@ const Settings = (() => {
     })
       .then(r => r.json())
       .then(data => {
-        if (!data || data.error) return;
-        const user = data.user;
+        console.log('[google login] 응답:', data);
+        if (!data || data.error || data.message) {
+          showToast('로그인 실패: ' + (data?.message || data?.error || '알 수 없는 오류'));
+          return;
+        }
+        const user = data.user || data;
+        // API 응답 필드 통일 (nickname → name)
+        if (!user.name && user.nickname) user.name = user.nickname;
         isLoggedIn  = true;
         currentUser = user;
         Storage.set(LOGIN_KEY, true);
         Storage.set(USER_KEY, user);
-        Storage.set('yrj_token', data.token);
+        if (data.token) Storage.set('yrj_token', data.token);
         renderLoginSection();
+        showToast('✓ ' + (user.name || user.email) + '으로 로그인됐어요');
       })
-      .catch(err => console.error('[google login]', err));
+      .catch(err => {
+        console.error('[google login]', err);
+        showToast('로그인 중 오류가 발생했어요');
+      });
   }
 
   function initGoogleLogin() {
