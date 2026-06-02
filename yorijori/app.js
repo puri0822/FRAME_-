@@ -2768,6 +2768,7 @@ const Settings = (() => {
         Storage.set(USER_KEY, user);
         if (data.token) Storage.set('yrj_token', data.token);
         renderLoginSection();
+        Fridge.reload();
         Home.loadChatHistory();
       })
       .catch(err => {
