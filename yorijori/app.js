@@ -1018,7 +1018,7 @@ const Fridge = (() => {
       .map(i => i.name);
   }
 
-  function reload() { render(); }
+  function reload() { load(); render(); }
 
   return { init, updateRecipeSearchBtn, getSelectedNames, add, render, reload, getKey: KEY };
 })();
