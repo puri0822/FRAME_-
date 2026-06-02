@@ -6,6 +6,7 @@ require('dotenv').config();
 const recipesRouter    = require('./routes/recipes');
 const categoriesRouter = require('./routes/categories');
 const youtubeRouter    = require('./routes/youtube');
+const receiptRouter    = require('./routes/receipt');
 const db               = require('./db');
 const { syncRecipes }  = require('./sync-recipes');
 
@@ -22,6 +23,7 @@ app.use(express.static(path.join(__dirname, '../yorijori')));
 app.use('/api/recipes',          recipesRouter);
 app.use('/api/recipe-categories', categoriesRouter);
 app.use('/api/youtube',           youtubeRouter);
+app.use('/api/receipt',           receiptRouter);
 
 // 구글 로그인 API
 app.post('/api/auth/google', async (req, res) => {
