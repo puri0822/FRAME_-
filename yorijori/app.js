@@ -2731,10 +2731,10 @@ const Settings = (() => {
   let currentUser = Storage.get(USER_KEY, null);
 
   function renderLoginSection() {
-    const loginBtn  = document.getElementById('google-login-btn');
-    const logoutBtn = document.getElementById('google-logout-btn');
-    if (loginBtn)  loginBtn.hidden  = isLoggedIn;
-    if (logoutBtn) logoutBtn.hidden = !isLoggedIn;
+    const signinContainer = document.getElementById('google-signin-container');
+    const logoutBtn       = document.getElementById('google-logout-btn');
+    if (signinContainer) signinContainer.style.display = isLoggedIn ? 'none' : 'flex';
+    if (logoutBtn)       logoutBtn.hidden = !isLoggedIn;
 
     // 유저 정보 표시
     const userInfo = document.getElementById('google-user-info');
@@ -2809,7 +2809,7 @@ const Settings = (() => {
   }
 
   function initGoogleLogin() {
-    // GSI 스크립트 로드 대기 후 숨겨진 버튼 렌더링
+    // GSI 스크립트 로드 대기 후 실제 로그인 컨테이너에 버튼 렌더링
     function setup() {
       if (!window.google) return;
       google.accounts.id.initialize({
@@ -2817,17 +2817,17 @@ const Settings = (() => {
         callback:  handleGoogleCredential,
       });
 
-      // 숨겨진 div에 Google 공식 버튼 렌더링
-      const hiddenDiv = document.createElement('div');
-      hiddenDiv.id = 'google-hidden-btn';
-      hiddenDiv.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
-      document.body.appendChild(hiddenDiv);
-
-      google.accounts.id.renderButton(hiddenDiv, {
-        type: 'standard',
-        theme: 'outline',
-        size: 'large',
-      });
+      // 실제 컨테이너에 Google 공식 버튼 직접 렌더링 (숨김 없음)
+      const container = document.getElementById('google-signin-container');
+      if (container) {
+        google.accounts.id.renderButton(container, {
+          type:  'standard',
+          theme: 'outline',
+          size:  'large',
+          text:  'signin_with',
+          width: 280,
+        });
+      }
     }
 
     if (window.google) {
@@ -2837,16 +2837,6 @@ const Settings = (() => {
       const interval = setInterval(() => {
         if (window.google) { clearInterval(interval); setup(); }
       }, 100);
-    }
-  }
-
-  function googleLogin() {
-    // 팝업이 사용자 제스처로 인식되려면 click() 을 동기적으로 즉시 호출해야 함
-    const hiddenBtn = document.querySelector('#google-hidden-btn div[role="button"]');
-    if (hiddenBtn) {
-      hiddenBtn.click();
-    } else {
-      console.warn('[google login] 버튼 아직 미준비');
     }
   }
 
@@ -2993,7 +2983,6 @@ const Settings = (() => {
 
     // 로그인 / 로그아웃
     initGoogleLogin();
-    document.getElementById('google-login-btn')?.addEventListener('click', googleLogin);
     document.getElementById('google-logout-btn')?.addEventListener('click', googleLogout);
 
     // 로그인 유도 배너 — 클릭 시 설정 열기
