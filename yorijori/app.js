@@ -2705,17 +2705,44 @@ const Settings = (() => {
   }
 
   function initGoogleLogin() {
-    if (!window.google) return;
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback:  handleGoogleCredential,
-    });
+    // GSI 스크립트 로드 대기 후 숨겨진 버튼 렌더링
+    function setup() {
+      if (!window.google) return;
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback:  handleGoogleCredential,
+      });
+
+      // 숨겨진 div에 Google 공식 버튼 렌더링
+      const hiddenDiv = document.createElement('div');
+      hiddenDiv.id = 'google-hidden-btn';
+      hiddenDiv.style.cssText = 'position:absolute;opacity:0;pointer-events:none;';
+      document.body.appendChild(hiddenDiv);
+
+      google.accounts.id.renderButton(hiddenDiv, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+      });
+    }
+
+    if (window.google) {
+      setup();
+    } else {
+      // async 로드 완료 대기
+      const interval = setInterval(() => {
+        if (window.google) { clearInterval(interval); setup(); }
+      }, 100);
+    }
   }
 
   function googleLogin() {
     animatePress('google-login-btn', () => {
-      if (window.google) {
-        google.accounts.id.prompt();
+      const hiddenBtn = document.querySelector('#google-hidden-btn div[role="button"]');
+      if (hiddenBtn) {
+        hiddenBtn.click();
+      } else {
+        console.warn('[google login] 버튼 아직 미준비');
       }
     });
   }
