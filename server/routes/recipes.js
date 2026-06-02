@@ -52,7 +52,7 @@ router.get('/', async (req, res) => {
         r.id, r.name, r.category_id, r.image_url, r.cook_time_min, r.difficulty,
         r.youtube_title, r.youtube_url,
         COALESCE(AVG(rv.rating), 0)                                    AS avg_rating,
-        SUM(CASE WHEN rv.is_liked = 1 THEN 1 ELSE 0 END)               AS like_count,
+        (SELECT COUNT(*) FROM recipe_like WHERE recipe_id = r.id)       AS like_count,
         (SELECT JSON_ARRAYAGG(ingredient_name)
            FROM recipe_ingredient WHERE recipe_id = r.id)              AS ingredients,
         (SELECT JSON_ARRAYAGG(ingredient_name)
@@ -83,7 +83,7 @@ router.get('/trending', async (req, res) => {
         r.id, r.name, r.category_id, r.image_url, r.cook_time_min, r.difficulty,
         r.youtube_title, r.youtube_url,
         COALESCE(AVG(rv.rating), 0)                                    AS avg_rating,
-        SUM(CASE WHEN rv.is_liked = 1 THEN 1 ELSE 0 END)               AS like_count,
+        (SELECT COUNT(*) FROM recipe_like WHERE recipe_id = r.id)       AS like_count,
         (SELECT JSON_ARRAYAGG(ingredient_name)
            FROM recipe_ingredient WHERE recipe_id = r.id)              AS ingredients,
         (SELECT JSON_ARRAYAGG(ingredient_name)
@@ -105,6 +105,22 @@ router.get('/trending', async (req, res) => {
   }
 });
 
+// GET /api/recipes/liked?userId=xxx  — 사용자가 좋아요한 레시피 ID 목록 (반드시 /:id 앞에 위치)
+router.get('/liked', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.json([]);
+  try {
+    const [rows] = await db.query(
+      'SELECT recipe_id FROM recipe_like WHERE user_id = ?',
+      [userId]
+    );
+    res.json(rows.map(r => r.recipe_id));
+  } catch (err) {
+    console.error('[liked list]', err);
+    res.status(500).json({ error: '조회 실패' });
+  }
+});
+
 // GET /api/recipes/:id
 router.get('/:id', async (req, res) => {
   try {
@@ -116,7 +132,7 @@ router.get('/:id', async (req, res) => {
         r.id, r.name, r.category_id, r.image_url, r.cook_time_min, r.difficulty,
         r.youtube_title, r.youtube_url,
         COALESCE(AVG(rv.rating), 0)                                    AS avg_rating,
-        SUM(CASE WHEN rv.is_liked = 1 THEN 1 ELSE 0 END)               AS like_count,
+        (SELECT COUNT(*) FROM recipe_like WHERE recipe_id = r.id)       AS like_count,
         (SELECT JSON_ARRAYAGG(ingredient_name)
            FROM recipe_ingredient WHERE recipe_id = r.id)              AS ingredients,
         (SELECT JSON_ARRAYAGG(ingredient_name)
@@ -149,6 +165,37 @@ router.get('/:id', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: '레시피를 불러오지 못했습니다.' });
+  }
+});
+
+// POST /api/recipes/:id/like  — 좋아요 토글 (로그인 필요)
+router.post('/:id/like', async (req, res) => {
+  const recipeId = parseInt(req.params.id);
+  const { userId } = req.body;
+  if (isNaN(recipeId) || !userId) return res.status(400).json({ error: '필수 값 누락' });
+
+  try {
+    // 이미 좋아요 했으면 취소, 아니면 추가
+    const [[existing]] = await db.query(
+      'SELECT 1 FROM recipe_like WHERE recipe_id = ? AND user_id = ?',
+      [recipeId, userId]
+    );
+
+    if (existing) {
+      await db.query('DELETE FROM recipe_like WHERE recipe_id = ? AND user_id = ?', [recipeId, userId]);
+    } else {
+      await db.query('INSERT INTO recipe_like (recipe_id, user_id) VALUES (?, ?)', [recipeId, userId]);
+    }
+
+    const [[{ count }]] = await db.query(
+      'SELECT COUNT(*) AS count FROM recipe_like WHERE recipe_id = ?',
+      [recipeId]
+    );
+
+    res.json({ liked: !existing, count: Number(count) });
+  } catch (err) {
+    console.error('[like toggle]', err);
+    res.status(500).json({ error: '좋아요 처리 실패' });
   }
 });
 

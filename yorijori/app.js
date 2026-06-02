@@ -1115,10 +1115,11 @@ const Explore = (() => {
 
   // 숫자 타입만 허용하여 타입 불일치 방지
   const rawFavs = Storage.get(FAV_KEY, []);
-  let favorites        = new Set(Array.isArray(rawFavs) ? rawFavs.filter(Number.isFinite) : []);
-  let showFavOnly      = false;
-  let query            = '';
-  let activeCategory   = '전체';
+  let favorites         = new Set(Array.isArray(rawFavs) ? rawFavs.filter(Number.isFinite) : []);
+  let likedRecipes      = new Set(); // DB 좋아요한 레시피 ID
+  let showFavOnly       = false;
+  let query             = '';
+  let activeCategory    = '전체';
   let fridgeIngredients = []; // 냉장고 다중 선택으로 전달된 재료 이름 목록
 
   /* RECIPES에 있는 카테고리 목록 — API 로드 후에도 최신 목록 반환 */
@@ -1130,6 +1131,78 @@ const Explore = (() => {
 
   function saveFavorites() {
     Storage.set(FAV_KEY, [...favorites]);
+  }
+
+  /* ---------- DB 좋아요 로드 ---------- */
+
+  async function loadLiked() {
+    try {
+      const u = JSON.parse(localStorage.getItem('yrj_user'));
+      if (!u || !u.id) return;
+      const res  = await fetch(`/api/recipes/liked?userId=${encodeURIComponent(u.id)}`);
+      const ids  = await res.json();
+      likedRecipes = new Set(Array.isArray(ids) ? ids : []);
+      // 이미 렌더된 카드 하트 상태 갱신
+      document.querySelectorAll('.explore-card').forEach(card => {
+        const id  = parseInt(card.dataset.id);
+        const btn = card.querySelector('.heart-btn');
+        if (btn) btn.classList.toggle('active', likedRecipes.has(id));
+      });
+    } catch { /* 조용히 무시 */ }
+  }
+
+  /* ---------- 좋아요 토글 (DB 연동) ---------- */
+
+  async function toggleLike(id) {
+    const u = JSON.parse(localStorage.getItem('yrj_user') || 'null');
+    if (!u || !u.id) {
+      alert('로그인 후 이용해주세요!');
+      return;
+    }
+
+    // 낙관적 UI 업데이트
+    const isLiked = likedRecipes.has(id);
+    const card    = document.querySelector(`.explore-card[data-id="${id}"]`);
+    const btn     = card?.querySelector('.heart-btn');
+    const countEl = card?.querySelector('.heart-count');
+
+    if (isLiked) {
+      likedRecipes.delete(id);
+    } else {
+      likedRecipes.add(id);
+    }
+    if (btn) btn.classList.toggle('active', !isLiked);
+    if (countEl) {
+      const cur = parseInt(countEl.textContent.replace(/,/g, '')) || 0;
+      countEl.textContent = (isLiked ? cur - 1 : cur + 1).toLocaleString('ko-KR');
+    }
+
+    // 서버에 반영
+    try {
+      const res  = await fetch(`/api/recipes/${id}/like`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ userId: u.id }),
+      });
+      const data = await res.json();
+      // 서버 실제 카운트로 보정
+      if (countEl && typeof data.count === 'number') {
+        countEl.textContent = data.count.toLocaleString('ko-KR');
+      }
+    } catch {
+      // 실패 시 낙관적 업데이트 롤백
+      if (isLiked) likedRecipes.add(id); else likedRecipes.delete(id);
+      if (btn) btn.classList.toggle('active', isLiked);
+      if (countEl) {
+        const cur = parseInt(countEl.textContent.replace(/,/g, '')) || 0;
+        countEl.textContent = (isLiked ? cur + 1 : cur - 1).toLocaleString('ko-KR');
+      }
+    }
+
+    // 즐겨찾기도 동기화
+    if (likedRecipes.has(id)) favorites.add(id); else favorites.delete(id);
+    saveFavorites();
+    if (showFavOnly) render();
   }
 
   /* ---------- 즐겨찾기 토글 (카드 전체 재렌더 없이 해당 버튼만 업데이트) ---------- */
@@ -1324,15 +1397,16 @@ const Explore = (() => {
     main.append(thumb, body);
 
     /* 하트 버튼 */
+    const isLiked  = likedRecipes.has(recipe.id);
     const heartBtn = document.createElement('button');
-    heartBtn.className = `heart-btn${isFav ? ' active' : ''}`;
-    heartBtn.setAttribute('aria-label', isFav ? '즐겨찾기 해제' : '즐겨찾기 추가');
+    heartBtn.className = `heart-btn${isLiked ? ' active' : ''}`;
+    heartBtn.setAttribute('aria-label', isLiked ? '좋아요 취소' : '좋아요');
     heartBtn.innerHTML = `<svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
     </svg>`;
     heartBtn.addEventListener('click', e => {
       e.stopPropagation();
-      toggleFavorite(recipe.id);
+      toggleLike(recipe.id);
     });
 
     const heartCount = document.createElement('span');
@@ -1651,7 +1725,7 @@ const Explore = (() => {
     }
   }
 
-  return { init, render, refreshRecos, toggleFavorite, isFavorite: id => favorites.has(id), filterByIngredients, clearFridgeFilter, loadTrending };
+  return { init, render, refreshRecos, toggleFavorite, isFavorite: id => favorites.has(id), filterByIngredients, clearFridgeFilter, loadTrending, loadLiked };
 })();
 
 
@@ -2801,6 +2875,7 @@ const Settings = (() => {
         renderLoginSection();
         Fridge.reload();
         Home.loadChatHistory();
+        Explore.loadLiked();
       })
       .catch(err => {
         console.error('[google login]', err);
