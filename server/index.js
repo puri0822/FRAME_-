@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const recipesRouter    = require('./routes/recipes');
 const categoriesRouter = require('./routes/categories');
+const youtubeRouter    = require('./routes/youtube');
 const db               = require('./db');
 const { syncRecipes }  = require('./sync-recipes');
 
@@ -20,6 +21,7 @@ app.use(express.static(path.join(__dirname, '../yorijori')));
 // API
 app.use('/api/recipes',          recipesRouter);
 app.use('/api/recipe-categories', categoriesRouter);
+app.use('/api/youtube',           youtubeRouter);
 
 // 챗봇 API
 app.post('/api/chat', async (req, res) => {

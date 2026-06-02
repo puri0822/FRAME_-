@@ -9,7 +9,8 @@ module.exports = {
       DB_USER: 'admin',
       DB_PASSWORD: 'ezqqFLi8sZa5xdK',
       DB_NAME: 'sframe',
-      FOOD_API_KEY: '799f75d8df354a00b255'
+      FOOD_API_KEY: '799f75d8df354a00b255',
+      YOUTUBE_API_KEY: 'AIzaSyD3qFFYKd6ATXnebUhJ_e1JfjIHv3-Ushg'
     }
   }]
 };

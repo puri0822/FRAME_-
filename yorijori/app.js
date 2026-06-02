@@ -2230,34 +2230,52 @@ const RecipeModal = (() => {
     ytTitle.className = 'modal-section-title';
     ytTitle.textContent = '유튜브 참고';
 
-    // 관련 영상 카드 목록 (첫 번째는 레시피 고유 제목, 나머지는 연관 제목 자동 생성)
-    const ytVideos = [
-      { title: recipe.youtube_title,                                          grad: 'linear-gradient(135deg,#1a1a2e,#0f3460)' },
-      { title: `${recipe.name} 황금 레시피 | 영양사가 알려주는 비법`,         grad: 'linear-gradient(135deg,#1e3a1e,#2a5c1e)' },
-      { title: `${recipe.name} 더 맛있게 | 소스 & 플레이팅 꿀팁`,            grad: 'linear-gradient(135deg,#3a1a1a,#6b2828)' },
-      { title: `${recipe.name} 응용편 | 냉장고 재료로 색다르게 만들기`,       grad: 'linear-gradient(135deg,#1a2a3a,#2c4a6e)' },
-    ];
-
     const ytScroll = document.createElement('div');
     ytScroll.className = 'modal-yt-scroll';
 
-    ytVideos.forEach(v => {
-      const card = document.createElement('div');
-      card.className = 'modal-yt-card';
-      card.innerHTML = `
-        <div class="modal-yt-thumb" style="background:${v.grad}">
-          <div class="modal-yt-play">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          </div>
-          <span class="modal-yt-label">YouTube</span>
-        </div>
-        <p class="modal-yt-title">${v.title}</p>
+    // 로딩 스켈레톤 3개
+    for (let i = 0; i < 3; i++) {
+      const skeleton = document.createElement('div');
+      skeleton.className = 'modal-yt-card modal-yt-skeleton';
+      skeleton.innerHTML = `
+        <div class="modal-yt-thumb" style="background:#2a2a2a;"></div>
+        <p class="modal-yt-title" style="background:#2a2a2a;color:transparent;border-radius:4px;">로딩 중...</p>
       `;
-      ytScroll.appendChild(card);
-    });
+      ytScroll.appendChild(skeleton);
+    }
 
     ytSection.append(ytTitle, ytScroll);
     frag.appendChild(ytSection);
+
+    // YouTube API 비동기 로드
+    fetch(`/api/youtube/search?q=${encodeURIComponent(recipe.name)}&recipeId=${recipe.id}`)
+      .then(r => r.json())
+      .then(videos => {
+        ytScroll.innerHTML = '';
+        if (!Array.isArray(videos) || videos.length === 0) {
+          ytScroll.innerHTML = '<p style="color:#aaa;padding:12px;">관련 영상을 찾지 못했습니다.</p>';
+          return;
+        }
+        videos.forEach(v => {
+          const card = document.createElement('div');
+          card.className = 'modal-yt-card';
+          card.style.cursor = 'pointer';
+          card.innerHTML = `
+            <div class="modal-yt-thumb" style="background:#000;position:relative;overflow:hidden;">
+              <img src="${v.thumbnail}" alt="${v.title}" style="width:100%;height:100%;object-fit:cover;display:block;">
+              <div class="modal-yt-play">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+            </div>
+            <p class="modal-yt-title">${v.title}</p>
+          `;
+          card.addEventListener('click', () => window.open(v.url, '_blank'));
+          ytScroll.appendChild(card);
+        });
+      })
+      .catch(() => {
+        ytScroll.innerHTML = '<p style="color:#aaa;padding:12px;">영상을 불러오지 못했습니다.</p>';
+      });
 
     /* 리뷰 섹션 */
     // DB 레시피는 recipe.reviews 배열 사용, 로컬 레시피는 하드코딩 객체 사용
