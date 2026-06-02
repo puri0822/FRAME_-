@@ -2685,7 +2685,7 @@ const Settings = (() => {
   }
 
   function handleGoogleCredential(response) {
-    fetch('https://4ur32pd547.execute-api.ap-northeast-2.amazonaws.com/auth/google', {
+    fetch('/api/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken: response.credential }),
@@ -2694,11 +2694,10 @@ const Settings = (() => {
       .then(data => {
         console.log('[google login] 응답:', data);
         if (!data || data.error || data.message) {
-          showToast('로그인 실패: ' + (data?.message || data?.error || '알 수 없는 오류'));
+          alert('로그인 실패: ' + (data?.message || data?.error || '알 수 없는 오류'));
           return;
         }
         const user = data.user || data;
-        // API 응답 필드 통일 (nickname → name)
         if (!user.name && user.nickname) user.name = user.nickname;
         isLoggedIn  = true;
         currentUser = user;
@@ -2706,11 +2705,11 @@ const Settings = (() => {
         Storage.set(USER_KEY, user);
         if (data.token) Storage.set('yrj_token', data.token);
         renderLoginSection();
-        showToast('✓ ' + (user.name || user.email) + '으로 로그인됐어요');
+        alert('✓ ' + (user.name || user.email) + '으로 로그인됐어요');
       })
       .catch(err => {
         console.error('[google login]', err);
-        showToast('로그인 중 오류가 발생했어요');
+        alert('로그인 중 오류가 발생했어요');
       });
   }
 

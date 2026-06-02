@@ -25,6 +25,25 @@ app.use('/api/recipe-categories', categoriesRouter);
 app.use('/api/youtube',           youtubeRouter);
 app.use('/api/receipt',           receiptRouter);
 
+// 구글 로그인 프록시 (CORS 우회)
+app.post('/api/auth/google', async (req, res) => {
+  const { idToken } = req.body;
+  if (!idToken) return res.status(400).json({ error: '토큰이 없습니다.' });
+
+  try {
+    const response = await fetch('https://4ur32pd547.execute-api.ap-northeast-2.amazonaws.com/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (err) {
+    console.error('[auth proxy]', err);
+    res.status(500).json({ error: '로그인 처리 중 오류가 발생했습니다.' });
+  }
+});
+
 // 챗봇 API
 app.post('/api/chat', async (req, res) => {
   const { message } = req.body;
