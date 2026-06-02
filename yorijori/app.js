@@ -2070,7 +2070,7 @@ const Home = (() => {
           fetch('/api/recipes/trending')
             .then(res => res.json())
             .then(recipes => {
-              appendMessage('지금 SNS에서 인기 있는 레시피예요 🔥', 'ai');
+              appendMessage('좋아요가 많은 인기 레시피예요 🔥', 'ai');
               const mapped = recipes.slice(0, 3).map(r => ({
                 id:             r.id,
                 name:           r.name,

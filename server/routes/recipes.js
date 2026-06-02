@@ -95,7 +95,7 @@ router.get('/trending', async (req, res) => {
       LEFT JOIN recipe_review rv ON rv.recipe_id = r.id
       WHERE r.is_published = 1
       GROUP BY r.id
-      ORDER BY RAND()
+      ORDER BY like_count DESC
       LIMIT 10
     `);
     res.json(rows.map(toAppRecipe));
