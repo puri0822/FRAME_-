@@ -34,4 +34,16 @@ router.post('/', async (req, res) => {
   }
 });
 
+// DELETE /api/chat/history/:userId — 사용자 채팅 기록 전체 삭제
+router.delete('/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    await db.query('DELETE FROM chat_history WHERE user_id = ?', [userId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[chat-history DELETE]', err);
+    res.status(500).json({ error: '삭제에 실패했습니다.' });
+  }
+});
+
 module.exports = router;

@@ -2065,6 +2065,37 @@ const Home = (() => {
       }
     });
 
+    /* 대화 기록 지우기 버튼 */
+    document.getElementById('clear-chat-btn')?.addEventListener('click', () => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML = `
+        <div style="background:#1e1e1e;border-radius:16px;padding:24px;width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.4);text-align:center;">
+          <p style="margin:0 0 20px;font-size:15px;color:#fff;line-height:1.5;">대화 기록을 삭제하겠습니까?</p>
+          <div style="display:flex;gap:8px;">
+            <button id="clear-cancel-btn" style="flex:1;padding:10px;border-radius:10px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer;font-size:14px;">취소</button>
+            <button id="clear-confirm-btn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#e53935;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">삭제</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#clear-cancel-btn').addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+      overlay.querySelector('#clear-confirm-btn').addEventListener('click', () => {
+        overlay.remove();
+        // UI 초기화
+        const messagesEl = document.getElementById('chat-messages');
+        if (messagesEl) messagesEl.innerHTML = '';
+        chatHistoryLoaded = false;
+        showChips();
+        // DB에서도 삭제 (로그인 시에만)
+        const user = getLoggedInUser();
+        if (user && user.id) {
+          fetch(`/api/chat/history/${user.id}`, { method: 'DELETE' }).catch(() => {});
+        }
+      });
+    });
+
     document.querySelectorAll('.quick-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         if (!input) return;

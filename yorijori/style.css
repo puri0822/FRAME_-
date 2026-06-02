@@ -2354,6 +2354,22 @@ html, body {
   }
 }
 
+.quick-chip--clear {
+  border-color: rgba(229,57,53,0.3);
+  background: rgba(229,57,53,0.07);
+  color: #ef9a9a;
+}
+.quick-chip--clear:active {
+  background: rgba(229,57,53,0.18);
+  border-color: rgba(229,57,53,0.5);
+}
+@media (hover: hover) {
+  .quick-chip--clear:hover {
+    background: rgba(229,57,53,0.14);
+    border-color: rgba(229,57,53,0.45);
+  }
+}
+
 /* 재료 선택 칩 */
 .ingredient-chips {
   display: flex;
