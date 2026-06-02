@@ -1416,8 +1416,9 @@ const Explore = (() => {
     const heartWrap = document.createElement('div');
     heartWrap.className = 'heart-wrap';
     heartWrap.append(heartBtn, heartCount);
+    heartWrap.addEventListener('click', e => e.stopPropagation());
 
-    // 카드 클릭 → 상세 모달 (하트 버튼은 stopPropagation으로 제외됨)
+    // 카드 클릭 → 상세 모달 (하트 영역은 stopPropagation으로 제외됨)
     article.addEventListener('click', () => RecipeModal.open(recipe.id));
 
     article.append(main, heartWrap);
