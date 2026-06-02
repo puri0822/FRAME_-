@@ -27,6 +27,19 @@ app.use('/api/youtube',           youtubeRouter);
 app.use('/api/receipt',           receiptRouter);
 app.use('/api/chat/history',      chatHistoryRouter);
 
+// 닉네임 저장 API
+app.put('/api/user/nickname', async (req, res) => {
+  const { userId, nickname } = req.body;
+  if (!userId || !nickname) return res.status(400).json({ error: '필수 값 누락' });
+  try {
+    await db.query('UPDATE `user` SET nickname = ? WHERE id = ?', [nickname, userId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[nickname update]', err);
+    res.status(500).json({ error: '저장 실패' });
+  }
+});
+
 // 구글 로그인 프록시 (CORS 우회)
 app.post('/api/auth/google', async (req, res) => {
   const { idToken } = req.body;

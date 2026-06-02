@@ -112,6 +112,9 @@ const Router = (() => {
     if (pageId === 'explore' && typeof Explore !== 'undefined') {
       Explore.refreshRecos();
     }
+    if (pageId === 'home' && typeof Home !== 'undefined') {
+      Home.loadChatHistory();
+    }
   }
 
   function back() {
@@ -160,7 +163,12 @@ const ingredientDB = [
    Fridge — 냉장고 재료 관리
    ========================================= */
 const Fridge = (() => {
-  const KEY = 'yorijori_ingredients';
+  function KEY() {
+    try {
+      const u = JSON.parse(localStorage.getItem('yrj_user'));
+      return u && u.id ? `yorijori_ingredients_${u.id}` : 'yorijori_ingredients';
+    } catch { return 'yorijori_ingredients'; }
+  }
 
   const CATEGORIES = [
     { id: '채소/과일',   label: '채소/과일',   color: '#16A34A' },
@@ -229,7 +237,7 @@ const Fridge = (() => {
   /* ---------- 데이터 읽기/쓰기 ---------- */
 
   function load() {
-    const raw = Storage.get(KEY, []);
+    const raw = Storage.get(KEY(), []);
 
     // 배열이 아니면 초기화
     if (!Array.isArray(raw)) { items = []; return; }
@@ -237,7 +245,7 @@ const Fridge = (() => {
     // 이전 버전(문자열 배열) 마이그레이션
     if (raw.length && typeof raw[0] === 'string') {
       items = raw.map((name, i) => ({ id: Date.now() + i, name, category: '냉장' }));
-      Storage.set(KEY, items);
+      Storage.set(KEY(), items);
       return;
     }
 
@@ -251,11 +259,11 @@ const Fridge = (() => {
     );
 
     // 필터링 후 항목 수가 달라졌으면 복구 저장
-    if (items.length !== raw.length) Storage.set(KEY, items);
+    if (items.length !== raw.length) Storage.set(KEY(), items);
   }
 
   function save() {
-    Storage.set(KEY, items);
+    Storage.set(KEY(), items);
   }
 
   /* ---------- CRUD ---------- */
@@ -1010,7 +1018,9 @@ const Fridge = (() => {
       .map(i => i.name);
   }
 
-  return { init, updateRecipeSearchBtn, getSelectedNames, add, render };
+  function reload() { render(); }
+
+  return { init, updateRecipeSearchBtn, getSelectedNames, add, render, reload, getKey: KEY };
 })();
 
 
@@ -1453,7 +1463,7 @@ const Explore = (() => {
     if (!strip) return;
     strip.innerHTML = '';
 
-    const fridgeData    = Storage.get('yorijori_ingredients', []);
+    const fridgeData    = Storage.get(Fridge.getKey(), []);
     const myIngredients = new Set(
       fridgeData.map(i => (typeof i === 'string' ? i : i.name).toLowerCase())
     );
@@ -1701,7 +1711,7 @@ const Home = (() => {
 
     // 냉장고 재료 관련 질문
     if (lower.includes('냉장고') || lower.includes('내 재료') || lower.includes('있는 재료')) {
-      const items = Storage.get('yorijori_ingredients', []);
+      const items = Storage.get(Fridge.getKey(), []);
       if (!items.length) {
         return '냉장고에 아직 재료가 없어요 🧊\n냉장고 탭에서 재료를 추가해 주세요!';
       }
@@ -1822,16 +1832,20 @@ const Home = (() => {
     }).catch(() => {});
   }
 
+  let chatHistoryLoaded = false;
+
   async function loadChatHistory() {
     const user = getLoggedInUser();
-    if (!user) return;
+    if (!user || chatHistoryLoaded) return;
     try {
       const res  = await fetch(`/api/chat/history/${user.id}`);
       const rows = await res.json();
       if (!Array.isArray(rows) || rows.length === 0) return;
       const messagesEl = document.getElementById('chat-messages');
       if (!messagesEl) return;
+      messagesEl.innerHTML = '';
       rows.forEach(row => appendMessage(row.message, row.role, false));
+      chatHistoryLoaded = true;
     } catch (e) {
       console.error('[chat-history load]', e);
     }
@@ -1992,7 +2006,7 @@ const Home = (() => {
 
     function openIngredientSelector() {
       // 냉장고 저장 데이터 또는 폴백 사용
-      const stored = Storage.get('yorijori_ingredients', []);
+      const stored = Storage.get(Fridge.getKey(), []);
       const names  = stored.length
         ? stored.map(i => i.name || i)
         : FALLBACK_INGREDIENTS;
@@ -2060,7 +2074,7 @@ const Home = (() => {
         if (chipText.includes('냉장고 재료 관리')) {
           appendMessage(chipText, 'user');
           hideChips();
-          const items = Storage.get('yorijori_ingredients', []);
+          const items = Storage.get(Fridge.getKey(), []);
           if (items.length === 0) {
             appendMessage(
               '냉장고가 비어있어요 🧊\n아래처럼 말씀해 주시면 재료를 바로 추가해 드릴게요!\n\n예) "오이 2개 넣어줘" / "당근이랑 계란 추가해줘"',
@@ -2079,7 +2093,7 @@ const Home = (() => {
 
         // 추천 레시피: 냉장고 재료 기반으로 API에 레시피 검색 요청
         if (chipText.includes('추천 레시피')) {
-          const items = Storage.get('yorijori_ingredients', []);
+          const items = Storage.get(Fridge.getKey(), []);
           if (items.length === 0) {
             appendMessage(chipText, 'user');
             appendMessage(
@@ -2130,7 +2144,13 @@ const Home = (() => {
     });
   }
 
-  return { init, loadChatHistory };
+  function resetChatHistory() {
+    chatHistoryLoaded = false;
+    const messagesEl = document.getElementById('chat-messages');
+    if (messagesEl) messagesEl.innerHTML = '';
+  }
+
+  return { init, loadChatHistory, resetChatHistory };
 })();
 
 
@@ -2736,6 +2756,11 @@ const Settings = (() => {
         }
         const user = data.user || data;
         if (!user.name && user.nickname) user.name = user.nickname;
+        // 기존 로컬 닉네임이 있으면 유지 (같은 계정일 때)
+        const prevUser = Storage.get(USER_KEY, null);
+        if (prevUser && prevUser.id === user.id && prevUser.nickname) {
+          user.nickname = prevUser.nickname;
+        }
         isLoggedIn  = true;
         currentUser = user;
         Storage.set(LOGIN_KEY, true);
@@ -2821,6 +2846,12 @@ const Settings = (() => {
       if (!newNickname) { alert('닉네임을 입력해주세요.'); return; }
       currentUser.nickname = newNickname;
       Storage.set(USER_KEY, currentUser);
+      // DB에도 저장 (재로그인 시 유지)
+      fetch('/api/user/nickname', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, nickname: newNickname }),
+      }).catch(() => {});
       overlay.remove();
       renderLoginSection();
       alert('닉네임이 저장됐어요!');
@@ -2834,6 +2865,8 @@ const Settings = (() => {
       currentUser = null;
       Storage.set(LOGIN_KEY, false);
       Storage.set(USER_KEY, null);
+      Home.resetChatHistory();
+      Fridge.reload();
       renderLoginSection();
     });
   }
