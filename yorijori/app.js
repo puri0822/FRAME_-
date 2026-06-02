@@ -2755,6 +2755,9 @@ const Settings = (() => {
           return;
         }
         const user = data.user || data;
+        // user.id가 없을 경우 sub, userId 등 다른 필드로 대체
+        if (!user.id) user.id = user.sub || user.userId || user.googleId || user.email;
+        console.log('[google login] user.id:', user.id);
         if (!user.name && user.nickname) user.name = user.nickname;
         // 로그아웃 후에도 유지되는 닉네임 복원 (유저 ID 기반 별도 키)
         const savedNickname = localStorage.getItem(`yrj_nickname_${user.id}`);
