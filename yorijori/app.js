@@ -2435,177 +2435,215 @@ const RecipeModal = (() => {
       });
 
     /* 리뷰 섹션 */
-    // DB 레시피는 recipe.reviews 배열 사용, 로컬 레시피는 하드코딩 객체 사용
-    const photoReviews = recipe.source === 'db' ? [] : (RECIPE_REVIEWS[recipe.id] || []);
-    const textReviews  = recipe.source === 'db'
+    frag.appendChild(makeDivider());
+
+    const reviewSection = document.createElement('div');
+    reviewSection.className = 'modal-section';
+
+    // 현재 로그인 유저
+    let currentReviewer = null;
+    try { currentReviewer = JSON.parse(localStorage.getItem('yrj_user')); } catch {}
+
+    // 리뷰 데이터 (DB 레시피)
+    let reviews = recipe.source === 'db'
       ? (recipe.reviews || []).map(r => ({ ...r, date: r.date || '' }))
-      : (RECIPE_TEXT_REVIEWS[recipe.id] || []);
-    const totalReviews = photoReviews.length + textReviews.length;
+      : [];
 
-    if (totalReviews > 0) {
-      frag.appendChild(makeDivider());
+    const starSVG = `<svg viewBox="0 0 24 24" class="review-star"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
 
-      const reviewSection = document.createElement('div');
-      reviewSection.className = 'modal-section';
+    function buildStars(rating) {
+      const wrap = document.createElement('div');
+      wrap.className = 'modal-review-stars';
+      for (let i = 0; i < 5; i++) {
+        const s = document.createElement('span');
+        s.className = `review-star-wrap${i < rating ? ' filled' : ''}`;
+        s.innerHTML = starSVG;
+        wrap.appendChild(s);
+      }
+      return wrap;
+    }
 
-      // 섹션 타이틀 행
-      const reviewTitleRow = document.createElement('div');
-      reviewTitleRow.className = 'modal-review-title-row';
+    // ── 섹션 타이틀 ──────────────────────────────────
+    const reviewTitleRow = document.createElement('div');
+    reviewTitleRow.className = 'modal-review-title-row';
+    const reviewTitle = document.createElement('h3');
+    reviewTitle.className = 'modal-section-title';
+    reviewTitle.textContent = '리뷰';
+    const reviewCountEl = document.createElement('span');
+    reviewCountEl.className = 'modal-review-count';
+    reviewCountEl.textContent = reviews.length;
+    reviewTitleRow.append(reviewTitle, reviewCountEl);
 
-      const reviewTitle = document.createElement('h3');
-      reviewTitle.className = 'modal-section-title';
-      reviewTitle.textContent = '리뷰';
+    // ── 리뷰 작성 폼 ─────────────────────────────────
+    const writeForm = document.createElement('div');
+    writeForm.className = 'modal-review-write-form';
 
-      const reviewCount = document.createElement('span');
-      reviewCount.className = 'modal-review-count';
-      reviewCount.textContent = totalReviews;
+    // 폼 관련 변수 — buildReviewItem에서도 접근할 수 있도록 외부 스코프에 선언
+    let selectedStar    = 0;
+    let commentInput    = null;
+    let formTitle       = null;
+    let submitBtn       = null;
+    let starBtns        = [];
 
-      reviewTitleRow.append(reviewTitle, reviewCount);
+    function updateStarUI() {
+      starBtns.forEach((b, idx) => b.classList.toggle('filled', idx < selectedStar));
+    }
 
-      // ── 헬퍼: 별점 DOM ──────────────────────────────
-      const starSVG = `<svg viewBox="0 0 24 24" class="review-star"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
-      function buildStars(rating) {
-        const wrap = document.createElement('div');
-        wrap.className = 'modal-review-stars';
-        for (let i = 0; i < 5; i++) {
-          const s = document.createElement('span');
-          s.className = `review-star-wrap${i < rating ? ' filled' : ''}`;
-          s.innerHTML = starSVG;
-          wrap.appendChild(s);
-        }
-        return wrap;
+    if (!currentReviewer) {
+      writeForm.innerHTML = `<p style="color:#888;font-size:13px;text-align:center;padding:12px 0;">로그인 후 리뷰를 작성할 수 있어요.</p>`;
+    } else {
+      formTitle = document.createElement('p');
+      formTitle.className = 'modal-review-form-title';
+      formTitle.textContent = '리뷰 작성';
+
+      const starSelector = document.createElement('div');
+      starSelector.className = 'modal-review-star-selector';
+      for (let i = 1; i <= 5; i++) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'modal-review-star-btn';
+        btn.innerHTML = starSVG;
+        btn.addEventListener('click', () => { selectedStar = i; updateStarUI(); });
+        starBtns.push(btn);
+        starSelector.appendChild(btn);
       }
 
-      // ── 헬퍼: 포토 리뷰 아이템 ───────────────────────
-      function buildPhotoItem(rv) {
-        const item = document.createElement('div');
-        item.className = 'modal-review-item';
+      commentInput = document.createElement('textarea');
+      commentInput.className = 'modal-review-comment-input';
+      commentInput.placeholder = '이 레시피 어떠셨나요? (선택)';
+      commentInput.rows = 3;
 
-        const content = document.createElement('div');
-        content.className = 'modal-review-content';
-
-        const reviewHeader = document.createElement('div');
-        reviewHeader.className = 'modal-review-header';
-
-        const userName = document.createElement('span');
-        userName.className = 'modal-review-user';
-        userName.textContent = rv.user;
-
-        reviewHeader.append(userName, buildStars(rv.rating));
-
-        const reviewText = document.createElement('p');
-        reviewText.className = 'modal-review-text';
-        reviewText.textContent = rv.text;
-
-        content.append(reviewHeader, reviewText);
-
-        const photo = document.createElement('div');
-        photo.className = 'modal-review-photo';
-        photo.style.background = rv.grad;
-        photo.textContent = rv.photo;
-
-        item.append(content, photo);
-        return item;
-      }
-
-      // ── 헬퍼: 텍스트 리뷰 아이템 ─────────────────────
-      function buildTextItem(rv) {
-        const item = document.createElement('div');
-        item.className = 'modal-text-review-item';
-
-        const meta = document.createElement('div');
-        meta.className = 'modal-text-review-meta';
-
-        const userName = document.createElement('span');
-        userName.className = 'modal-review-user';
-        userName.textContent = rv.user;
-
-        const rightMeta = document.createElement('div');
-        rightMeta.className = 'modal-text-review-right-meta';
-        rightMeta.append(buildStars(rv.rating));
-
-        if (rv.date) {
-          const date = document.createElement('span');
-          date.className = 'modal-text-review-date';
-          date.textContent = rv.date;
-          rightMeta.appendChild(date);
-        }
-
-        meta.append(userName, rightMeta);
-
-        const reviewText = document.createElement('p');
-        reviewText.className = 'modal-review-text';
-        reviewText.textContent = rv.text;
-
-        item.append(meta, reviewText);
-        return item;
-      }
-
-      // ── 포토 모아보기 갤러리 ─────────────────────────
-      const GALLERY_MAX = 5;
-      const galleryWrap = document.createElement('div');
-      galleryWrap.className = 'modal-photo-gallery';
-
-      photoReviews.forEach((rv, idx) => {
-        const thumb = document.createElement('div');
-        thumb.className = 'modal-photo-thumb';
-        thumb.style.background = rv.grad;
-
-        // 초과분: 마지막 슬롯에 +N 오버레이
-        if (idx === GALLERY_MAX - 1 && photoReviews.length > GALLERY_MAX) {
-          const over = document.createElement('div');
-          over.className = 'modal-photo-thumb-more';
-          over.textContent = `+${photoReviews.length - (GALLERY_MAX - 1)}`;
-          thumb.appendChild(over);
-        } else {
-          thumb.textContent = rv.photo;
-        }
-
-        // 라이트박스 열기 (전체 목록 + 현재 인덱스)
-        thumb.addEventListener('click', () => PhotoLightbox.open(photoReviews, idx));
-
-        galleryWrap.appendChild(thumb);
-        if (idx >= GALLERY_MAX - 1 && photoReviews.length > GALLERY_MAX) return;
+      submitBtn = document.createElement('button');
+      submitBtn.className = 'modal-review-submit-btn';
+      submitBtn.textContent = '등록';
+      submitBtn.addEventListener('click', async () => {
+        if (selectedStar === 0) { alert('별점을 선택해주세요!'); return; }
+        submitBtn.disabled = true;
+        try {
+          const res = await fetch(`/api/recipes/${recipe.id}/review`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: currentReviewer.id, rating: selectedStar, comment: commentInput.value.trim() }),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            reviews = data.reviews;
+            renderReviews();
+            selectedStar = 0; commentInput.value = ''; updateStarUI();
+            formTitle.textContent = '리뷰 작성';
+            submitBtn.textContent = '등록';
+          }
+        } finally { submitBtn.disabled = false; }
       });
 
-      // ── 초기 렌더 (포토 2 + 텍스트 2) ────────────────
-      const INIT = 2;
-      const photoList = document.createElement('div');
-      photoList.className = 'modal-review-list';
-      photoReviews.slice(0, INIT).forEach(rv => photoList.appendChild(buildPhotoItem(rv)));
+      writeForm.append(formTitle, starSelector, commentInput, submitBtn);
 
-      const textList = document.createElement('div');
-      textList.className = 'modal-text-review-list';
-      textReviews.slice(0, INIT).forEach(rv => textList.appendChild(buildTextItem(rv)));
+      // 기존 내 리뷰가 있으면 폼에 미리 채우기
+      const myReview = reviews.find(r => r.user_id === currentReviewer.id);
+      if (myReview) {
+        selectedStar = myReview.rating;
+        commentInput.value = myReview.text || '';
+        updateStarUI();
+        formTitle.textContent = '내 리뷰 수정';
+        submitBtn.textContent = '수정 완료';
+      }
+    }
 
-      // ── 더보기 버튼 ───────────────────────────────────
-      const hiddenCount = (photoReviews.length - Math.min(INIT, photoReviews.length))
-                        + (textReviews.length  - Math.min(INIT, textReviews.length));
+    // ── 리뷰 아이템 빌더 ─────────────────────────────
+    function buildReviewItem(rv) {
+      const item = document.createElement('div');
+      item.className = 'modal-text-review-item';
 
-      reviewSection.append(reviewTitleRow, galleryWrap, photoList, textList);
+      const meta = document.createElement('div');
+      meta.className = 'modal-text-review-meta';
 
-      if (hiddenCount > 0) {
-        const moreBtn = document.createElement('button');
-        moreBtn.className = 'modal-review-more-btn';
-        moreBtn.textContent = `리뷰 더보기 (${hiddenCount}개)`;
-        moreBtn.addEventListener('click', () => {
-          photoReviews.slice(INIT).forEach(rv => {
-            const el = buildPhotoItem(rv);
-            el.classList.add('review-item--fadein');
-            photoList.appendChild(el);
-          });
-          textReviews.slice(INIT).forEach(rv => {
-            const el = buildTextItem(rv);
-            el.classList.add('review-item--fadein');
-            textList.appendChild(el);
-          });
-          moreBtn.remove();
+      const userName = document.createElement('span');
+      userName.className = 'modal-review-user';
+      userName.textContent = rv.user;
+
+      const rightMeta = document.createElement('div');
+      rightMeta.className = 'modal-text-review-right-meta';
+      rightMeta.append(buildStars(rv.rating));
+      if (rv.date) {
+        const date = document.createElement('span');
+        date.className = 'modal-text-review-date';
+        date.textContent = rv.date;
+        rightMeta.appendChild(date);
+      }
+      meta.append(userName, rightMeta);
+
+      const reviewText = document.createElement('p');
+      reviewText.className = 'modal-review-text';
+      reviewText.textContent = rv.text || '';
+
+      item.append(meta, reviewText);
+
+      // 내 리뷰면 수정/삭제 버튼
+      if (currentReviewer && rv.user_id === currentReviewer.id) {
+        const actions = document.createElement('div');
+        actions.className = 'modal-review-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'modal-review-action-btn';
+        editBtn.textContent = '수정';
+        editBtn.addEventListener('click', () => {
+          selectedStar = rv.rating;
+          if (commentInput) commentInput.value = rv.text || '';
+          updateStarUI();
+          if (formTitle) formTitle.textContent = '리뷰 수정';
+          if (submitBtn) submitBtn.textContent = '수정 완료';
+          writeForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
-        reviewSection.appendChild(moreBtn);
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'modal-review-action-btn modal-review-action-btn--del';
+        delBtn.textContent = '삭제';
+        delBtn.addEventListener('click', async () => {
+          if (!confirm('리뷰를 삭제하겠습니까?')) return;
+          const res = await fetch(`/api/recipes/${recipe.id}/review`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: currentReviewer.id }),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            reviews = reviews.filter(r => r.user_id !== currentReviewer.id);
+            renderReviews();
+            selectedStar = 0;
+            if (commentInput) commentInput.value = '';
+            updateStarUI();
+            if (formTitle) formTitle.textContent = '리뷰 작성';
+            if (submitBtn) submitBtn.textContent = '등록';
+          }
+        });
+
+        actions.append(editBtn, delBtn);
+        item.appendChild(actions);
       }
 
-      frag.appendChild(reviewSection);
+      return item;
     }
+
+    // ── 리뷰 목록 렌더 ───────────────────────────────
+    const reviewList = document.createElement('div');
+    reviewList.className = 'modal-text-review-list';
+
+    function renderReviews() {
+      reviewList.innerHTML = '';
+      reviewCountEl.textContent = reviews.length;
+      if (reviews.length === 0) {
+        const empty = document.createElement('p');
+        empty.style.cssText = 'color:#888;font-size:13px;text-align:center;padding:16px 0;';
+        empty.textContent = '아직 리뷰가 없어요. 첫 번째 리뷰를 남겨보세요!';
+        reviewList.appendChild(empty);
+        return;
+      }
+      reviews.forEach(rv => reviewList.appendChild(buildReviewItem(rv)));
+    }
+
+    reviewSection.append(reviewTitleRow, writeForm, reviewList);
+    renderReviews();
+    frag.appendChild(reviewSection);
 
     // 하단 여백 (네비바 가림 방지)
     const spacer = document.createElement('div');

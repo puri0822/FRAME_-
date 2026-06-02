@@ -168,6 +168,68 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// POST /api/recipes/:id/review  — 리뷰 작성/수정 (upsert)
+router.post('/:id/review', async (req, res) => {
+  const recipeId = parseInt(req.params.id);
+  const { userId, rating, comment } = req.body;
+  if (isNaN(recipeId) || !userId || !rating) return res.status(400).json({ error: '필수 값 누락' });
+
+  try {
+    await db.query(
+      `INSERT INTO recipe_review (recipe_id, user_id, rating, comment, is_liked)
+       VALUES (?, ?, ?, ?, 0)
+       ON DUPLICATE KEY UPDATE rating = VALUES(rating), comment = VALUES(comment)`,
+      [recipeId, userId, rating, comment || null]
+    );
+
+    // 갱신된 리뷰 목록 반환
+    const [rows] = await db.query(`
+      SELECT u.nickname AS \`user\`, rv.rating,
+             rv.comment AS text,
+             DATE_FORMAT(rv.created_at, '%Y.%m.%d') AS date,
+             rv.user_id
+      FROM recipe_review rv
+      JOIN \`user\` u ON u.id = rv.user_id
+      WHERE rv.recipe_id = ?
+      ORDER BY rv.created_at DESC
+    `, [recipeId]);
+
+    const [[{ avg }]] = await db.query(
+      'SELECT COALESCE(AVG(rating), 0) AS avg FROM recipe_review WHERE recipe_id = ?',
+      [recipeId]
+    );
+
+    res.json({ ok: true, reviews: rows, avgRating: parseFloat(avg) });
+  } catch (err) {
+    console.error('[review upsert]', err);
+    res.status(500).json({ error: '리뷰 저장 실패' });
+  }
+});
+
+// DELETE /api/recipes/:id/review  — 내 리뷰 삭제
+router.delete('/:id/review', async (req, res) => {
+  const recipeId = parseInt(req.params.id);
+  const { userId } = req.body;
+  if (isNaN(recipeId) || !userId) return res.status(400).json({ error: '필수 값 누락' });
+
+  try {
+    await db.query(
+      'DELETE FROM recipe_review WHERE recipe_id = ? AND user_id = ?',
+      [recipeId, userId]
+    );
+
+    const [[{ avg }]] = await db.query(
+      'SELECT COALESCE(AVG(rating), 0) AS avg FROM recipe_review WHERE recipe_id = ?',
+      [recipeId]
+    );
+
+    res.json({ ok: true, avgRating: parseFloat(avg) });
+  } catch (err) {
+    console.error('[review delete]', err);
+    res.status(500).json({ error: '리뷰 삭제 실패' });
+  }
+});
+
 // POST /api/recipes/:id/like  — 좋아요 토글 (로그인 필요)
 router.post('/:id/like', async (req, res) => {
   const recipeId = parseInt(req.params.id);

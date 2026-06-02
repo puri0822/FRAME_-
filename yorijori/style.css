@@ -3568,6 +3568,126 @@ html, body {
   animation: review-fadein 0.22s ease both;
 }
 
+/* ── 리뷰 텍스트 아이템 ── */
+.modal-text-review-item {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.modal-text-review-item:last-child { border-bottom: none; }
+
+.modal-text-review-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.modal-text-review-right-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.modal-text-review-date {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.modal-text-review-list {
+  margin-top: 8px;
+}
+
+/* ── 리뷰 작성 폼 ── */
+.modal-review-write-form {
+  background: var(--color-card);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--color-border);
+}
+.modal-review-form-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin: 0 0 12px;
+}
+.modal-review-star-selector {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.modal-review-star-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s;
+}
+.modal-review-star-btn:active { transform: scale(0.85); }
+.modal-review-star-btn svg {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: #555;
+  transition: fill 0.15s, stroke 0.15s;
+}
+.modal-review-star-btn.filled svg {
+  fill: #F6A623;
+  stroke: #F6A623;
+}
+.modal-review-comment-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-text);
+  font-size: 13px;
+  padding: 10px 12px;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  margin-bottom: 10px;
+}
+.modal-review-comment-input:focus {
+  border-color: var(--color-primary);
+}
+.modal-review-submit-btn {
+  width: 100%;
+  padding: 11px;
+  border-radius: 10px;
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.modal-review-submit-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ── 수정/삭제 버튼 ── */
+.modal-review-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.modal-review-action-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.modal-review-action-btn--del {
+  color: #e53935;
+  border-color: rgba(229,57,53,0.3);
+}
+
 /* =========================================
    Photo Lightbox
    ========================================= */
