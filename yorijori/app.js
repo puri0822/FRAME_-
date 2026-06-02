@@ -2637,15 +2637,34 @@ const Settings = (() => {
   };
 
   const LOGIN_KEY = 'yrj_logged_in';
+  const USER_KEY  = 'yrj_user';
+
+  const GOOGLE_CLIENT_ID = '412792507622-0e2psgrf1tusb2fdbfv4cqfg5us0fabp.apps.googleusercontent.com';
 
   /** 로그인 상태 — localStorage에서 복원 */
   let isLoggedIn = Storage.get(LOGIN_KEY, false);
+  let currentUser = Storage.get(USER_KEY, null);
 
   function renderLoginSection() {
     const loginBtn  = document.getElementById('google-login-btn');
     const logoutBtn = document.getElementById('google-logout-btn');
     if (loginBtn)  loginBtn.hidden  = isLoggedIn;
     if (logoutBtn) logoutBtn.hidden = !isLoggedIn;
+
+    // 유저 정보 표시
+    const userInfo = document.getElementById('google-user-info');
+    if (userInfo) {
+      if (isLoggedIn && currentUser) {
+        userInfo.hidden = false;
+        userInfo.innerHTML = `
+          <img src="${currentUser.picture}" alt="프로필" style="width:32px;height:32px;border-radius:50%;vertical-align:middle;margin-right:8px;">
+          <span style="font-size:14px;">${currentUser.name}</span>
+        `;
+      } else {
+        userInfo.hidden = true;
+        userInfo.innerHTML = '';
+      }
+    }
 
     // 배너: hidden 속성 대신 CSS 클래스로 트랜지션 처리
     const banner = document.getElementById('login-prompt-banner');
@@ -2657,7 +2676,6 @@ const Settings = (() => {
     const btn = document.getElementById(btnId);
     if (!btn) { cb(); return; }
     btn.classList.remove('pressing');
-    // reflow로 애니메이션 재시작 보장
     void btn.offsetWidth;
     btn.classList.add('pressing');
     btn.addEventListener('animationend', () => {
@@ -2666,18 +2684,47 @@ const Settings = (() => {
     }, { once: true });
   }
 
-  function mockLogin() {
-    animatePress('google-login-btn', () => {
-      isLoggedIn = true;
-      Storage.set(LOGIN_KEY, true);
-      renderLoginSection();
+  function handleGoogleCredential(response) {
+    fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential: response.credential }),
+    })
+      .then(r => r.json())
+      .then(user => {
+        if (!user || user.error) return;
+        isLoggedIn  = true;
+        currentUser = user;
+        Storage.set(LOGIN_KEY, true);
+        Storage.set(USER_KEY, user);
+        renderLoginSection();
+      })
+      .catch(err => console.error('[google login]', err));
+  }
+
+  function initGoogleLogin() {
+    if (!window.google) return;
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback:  handleGoogleCredential,
     });
   }
 
-  function mockLogout() {
+  function googleLogin() {
+    animatePress('google-login-btn', () => {
+      if (window.google) {
+        google.accounts.id.prompt();
+      }
+    });
+  }
+
+  function googleLogout() {
     animatePress('google-logout-btn', () => {
-      isLoggedIn = false;
+      if (window.google) google.accounts.id.disableAutoSelect();
+      isLoggedIn  = false;
+      currentUser = null;
       Storage.set(LOGIN_KEY, false);
+      Storage.set(USER_KEY, null);
       renderLoginSection();
     });
   }
@@ -2770,8 +2817,9 @@ const Settings = (() => {
     });
 
     // 로그인 / 로그아웃
-    document.getElementById('google-login-btn')?.addEventListener('click', mockLogin);
-    document.getElementById('google-logout-btn')?.addEventListener('click', mockLogout);
+    initGoogleLogin();
+    document.getElementById('google-login-btn')?.addEventListener('click', googleLogin);
+    document.getElementById('google-logout-btn')?.addEventListener('click', googleLogout);
 
     // 로그인 유도 배너 — 클릭 시 설정 열기
     document.getElementById('login-prompt-banner')?.addEventListener('click', openModal);
