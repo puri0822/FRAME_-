@@ -2685,18 +2685,20 @@ const Settings = (() => {
   }
 
   function handleGoogleCredential(response) {
-    fetch('/api/auth/google', {
+    fetch('https://4ur32pd547.execute-api.ap-northeast-2.amazonaws.com/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ credential: response.credential }),
+      body: JSON.stringify({ idToken: response.credential }),
     })
       .then(r => r.json())
-      .then(user => {
-        if (!user || user.error) return;
+      .then(data => {
+        if (!data || data.error) return;
+        const user = data.user;
         isLoggedIn  = true;
         currentUser = user;
         Storage.set(LOGIN_KEY, true);
         Storage.set(USER_KEY, user);
+        Storage.set('yrj_token', data.token);
         renderLoginSection();
       })
       .catch(err => console.error('[google login]', err));

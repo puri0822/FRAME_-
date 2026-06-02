@@ -25,36 +25,6 @@ app.use('/api/recipe-categories', categoriesRouter);
 app.use('/api/youtube',           youtubeRouter);
 app.use('/api/receipt',           receiptRouter);
 
-// 구글 로그인 API
-app.post('/api/auth/google', async (req, res) => {
-  const { credential } = req.body;
-  if (!credential) return res.status(400).json({ error: '토큰이 없습니다.' });
-
-  try {
-    // Google 토큰 검증
-    const tokenRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
-    const payload  = await tokenRes.json();
-
-    if (payload.error || payload.aud !== '412792507622-0e2psgrf1tusb2fdbfv4cqfg5us0fabp.apps.googleusercontent.com') {
-      return res.status(401).json({ error: '유효하지 않은 토큰' });
-    }
-
-    const { sub: googleId, name, email, picture } = payload;
-
-    // DB에 유저 upsert
-    await db.query(`
-      INSERT INTO \`user\` (id, nickname, email, provider)
-      VALUES (?, ?, ?, 'google')
-      ON DUPLICATE KEY UPDATE nickname = VALUES(nickname)
-    `, [googleId, name, email]);
-
-    res.json({ id: googleId, name, email, picture });
-  } catch (err) {
-    console.error('[google auth]', err);
-    res.status(500).json({ error: '로그인 처리 중 오류가 발생했습니다.' });
-  }
-});
-
 // 챗봇 API
 app.post('/api/chat', async (req, res) => {
   const { message } = req.body;
