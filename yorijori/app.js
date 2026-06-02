@@ -2756,11 +2756,9 @@ const Settings = (() => {
         }
         const user = data.user || data;
         if (!user.name && user.nickname) user.name = user.nickname;
-        // 기존 로컬 닉네임이 있으면 유지 (같은 계정일 때)
-        const prevUser = Storage.get(USER_KEY, null);
-        if (prevUser && prevUser.id === user.id && prevUser.nickname) {
-          user.nickname = prevUser.nickname;
-        }
+        // 로그아웃 후에도 유지되는 닉네임 복원 (유저 ID 기반 별도 키)
+        const savedNickname = localStorage.getItem(`yrj_nickname_${user.id}`);
+        if (savedNickname) user.nickname = savedNickname;
         isLoggedIn  = true;
         currentUser = user;
         Storage.set(LOGIN_KEY, true);
@@ -2846,7 +2844,9 @@ const Settings = (() => {
       if (!newNickname) { alert('닉네임을 입력해주세요.'); return; }
       currentUser.nickname = newNickname;
       Storage.set(USER_KEY, currentUser);
-      // DB에도 저장 (재로그인 시 유지)
+      // 로그아웃 후에도 유지되도록 별도 키에 저장
+      localStorage.setItem(`yrj_nickname_${currentUser.id}`, newNickname);
+      // DB에도 저장
       fetch('/api/user/nickname', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
