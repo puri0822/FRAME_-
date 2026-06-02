@@ -1759,7 +1759,7 @@ const Home = (() => {
 
   /* ---------- 채팅 메시지 추가 ---------- */
 
-  function appendMessage(text, role) {
+  function appendMessage(text, role, save = false) {
     const messagesEl = document.getElementById('chat-messages');
     if (!messagesEl) return;
 
@@ -1806,6 +1806,37 @@ const Home = (() => {
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  /* ---------- 채팅 기록 저장/불러오기 ---------- */
+
+  function getLoggedInUser() {
+    try { return JSON.parse(localStorage.getItem('yrj_user')); } catch { return null; }
+  }
+
+  function saveChatMessage(role, message) {
+    const user = getLoggedInUser();
+    if (!user) return;
+    fetch('/api/chat/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id, role, message }),
+    }).catch(() => {});
+  }
+
+  async function loadChatHistory() {
+    const user = getLoggedInUser();
+    if (!user) return;
+    try {
+      const res  = await fetch(`/api/chat/history/${user.id}`);
+      const rows = await res.json();
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      const messagesEl = document.getElementById('chat-messages');
+      if (!messagesEl) return;
+      rows.forEach(row => appendMessage(row.message, row.role, false));
+    } catch (e) {
+      console.error('[chat-history load]', e);
+    }
+  }
+
   /* ---------- 메시지 전송 처리 ---------- */
 
   function sendMessage() {
@@ -1818,6 +1849,7 @@ const Home = (() => {
     sendBtn.disabled = true;
 
     appendMessage(text, 'user');
+    saveChatMessage('user', text);
     showTyping();
 
     fetch('/api/chat', {
@@ -1828,7 +1860,9 @@ const Home = (() => {
       .then(res => res.json())
       .then(data => {
         sendBtn.disabled = false;
-        appendMessage(data.reply || '응답을 받지 못했어요.', 'ai');
+        const reply = data.reply || '응답을 받지 못했어요.';
+        appendMessage(reply, 'ai');
+        saveChatMessage('ai', reply);
 
         if (data.action) {
           if (data.action.type === 'FRIDGE_SAVE' && Array.isArray(data.action.items)) {
@@ -2096,7 +2130,7 @@ const Home = (() => {
     });
   }
 
-  return { init };
+  return { init, loadChatHistory };
 })();
 
 
@@ -2708,6 +2742,7 @@ const Settings = (() => {
         Storage.set(USER_KEY, user);
         if (data.token) Storage.set('yrj_token', data.token);
         renderLoginSection();
+        Home.loadChatHistory();
         alert('✓ ' + (user.name || user.email) + '으로 로그인됐어요');
       })
       .catch(err => {
