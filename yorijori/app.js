@@ -2766,7 +2766,6 @@ const Settings = (() => {
         if (data.token) Storage.set('yrj_token', data.token);
         renderLoginSection();
         Home.loadChatHistory();
-        alert('✓ ' + (user.name || user.email) + '으로 로그인됐어요');
       })
       .catch(err => {
         console.error('[google login]', err);
