@@ -2820,7 +2820,7 @@ const Settings = (() => {
       // 숨겨진 div에 Google 공식 버튼 렌더링
       const hiddenDiv = document.createElement('div');
       hiddenDiv.id = 'google-hidden-btn';
-      hiddenDiv.style.cssText = 'position:absolute;opacity:0;pointer-events:none;';
+      hiddenDiv.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
       document.body.appendChild(hiddenDiv);
 
       google.accounts.id.renderButton(hiddenDiv, {
@@ -2841,14 +2841,13 @@ const Settings = (() => {
   }
 
   function googleLogin() {
-    animatePress('google-login-btn', () => {
-      const hiddenBtn = document.querySelector('#google-hidden-btn div[role="button"]');
-      if (hiddenBtn) {
-        hiddenBtn.click();
-      } else {
-        console.warn('[google login] 버튼 아직 미준비');
-      }
-    });
+    // 팝업이 사용자 제스처로 인식되려면 click() 을 동기적으로 즉시 호출해야 함
+    const hiddenBtn = document.querySelector('#google-hidden-btn div[role="button"]');
+    if (hiddenBtn) {
+      hiddenBtn.click();
+    } else {
+      console.warn('[google login] 버튼 아직 미준비');
+    }
   }
 
   function openNicknameModal() {
