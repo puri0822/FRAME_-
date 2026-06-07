@@ -45,13 +45,12 @@ const Api = (() => {
     return res.json();
   }
 
-  /** DB 레시피 전체 로드 후 RECIPES 배열에 병합 */
+  /** DB 레시피 전체 로드 */
   async function loadRecipes() {
     try {
       const dbRecipes = await get('/recipes');
-      // 이미 있는 id는 건너뜀 (로컬 하드코딩과 중복 방지)
-      const existingIds = new Set(RECIPES.map(r => r.id));
-      dbRecipes.forEach(r => { if (!existingIds.has(r.id)) RECIPES.push(r); });
+      RECIPES.length = 0;
+      dbRecipes.forEach(r => RECIPES.push(r));
     } catch (e) {
       console.warn('API 레시피 로드 실패 (오프라인 모드):', e.message);
     }
@@ -113,6 +112,9 @@ const Router = (() => {
     if (pageId === 'explore' && typeof Explore !== 'undefined') {
       Explore.refreshRecos();
     }
+    if (pageId === 'home' && typeof Home !== 'undefined') {
+      Home.loadChatHistory();
+    }
   }
 
   function back() {
@@ -161,7 +163,12 @@ const ingredientDB = [
    Fridge — 냉장고 재료 관리
    ========================================= */
 const Fridge = (() => {
-  const KEY = 'yorijori_ingredients';
+  function KEY() {
+    try {
+      const u = JSON.parse(localStorage.getItem('yrj_user'));
+      return u && u.id ? `yorijori_ingredients_${u.id}` : 'yorijori_ingredients';
+    } catch { return 'yorijori_ingredients'; }
+  }
 
   const CATEGORIES = [
     { id: '채소/과일',   label: '채소/과일',   color: '#16A34A' },
@@ -230,7 +237,7 @@ const Fridge = (() => {
   /* ---------- 데이터 읽기/쓰기 ---------- */
 
   function load() {
-    const raw = Storage.get(KEY, []);
+    const raw = Storage.get(KEY(), []);
 
     // 배열이 아니면 초기화
     if (!Array.isArray(raw)) { items = []; return; }
@@ -238,7 +245,7 @@ const Fridge = (() => {
     // 이전 버전(문자열 배열) 마이그레이션
     if (raw.length && typeof raw[0] === 'string') {
       items = raw.map((name, i) => ({ id: Date.now() + i, name, category: '냉장' }));
-      Storage.set(KEY, items);
+      Storage.set(KEY(), items);
       return;
     }
 
@@ -252,11 +259,11 @@ const Fridge = (() => {
     );
 
     // 필터링 후 항목 수가 달라졌으면 복구 저장
-    if (items.length !== raw.length) Storage.set(KEY, items);
+    if (items.length !== raw.length) Storage.set(KEY(), items);
   }
 
   function save() {
-    Storage.set(KEY, items);
+    Storage.set(KEY(), items);
   }
 
   /* ---------- CRUD ---------- */
@@ -929,6 +936,116 @@ const Fridge = (() => {
     document.getElementById('open-add-convenience-btn')
       ?.addEventListener('click', handleGoToConvenienceStore);
 
+    /* ── 영수증 촬영 ── */
+    (function() {
+      let receiptIngredients = [];
+
+      function openReceiptModal(ingredients) {
+        receiptIngredients = ingredients.map(function(i) {
+          return { name: i.name, count: i.count || 1, category_id: i.category_id || '채소/과일', removed: false };
+        });
+        renderReceiptList();
+        document.getElementById('receipt-modal-overlay').style.display = 'flex';
+      }
+
+      function renderReceiptList() {
+        const list = document.getElementById('receipt-ingredient-list');
+        list.innerHTML = '';
+        receiptIngredients.forEach(function(item, idx) {
+          if (item.removed) return;
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f9f9f9;border-radius:10px;';
+          row.innerHTML =
+            '<span style="flex:1;font-size:14px;font-weight:600;">' + item.name + '</span>' +
+            '<span style="font-size:11px;color:#888;background:#eee;padding:2px 6px;border-radius:6px;">' + item.category_id + '</span>' +
+            '<button data-idx="' + idx + '" data-action="minus" style="width:28px;height:28px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:16px;cursor:pointer;line-height:1;">-</button>' +
+            '<span data-idx="' + idx + '" data-role="count" style="min-width:24px;text-align:center;font-size:14px;font-weight:700;">' + item.count + '</span>' +
+            '<button data-idx="' + idx + '" data-action="plus" style="width:28px;height:28px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:16px;cursor:pointer;line-height:1;">+</button>' +
+            '<button data-idx="' + idx + '" data-action="remove" style="width:28px;height:28px;border:none;border-radius:6px;background:#ffe5e5;color:#e53935;font-size:14px;cursor:pointer;">✕</button>';
+          list.appendChild(row);
+        });
+        list.querySelectorAll('button[data-action]').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            const idx = parseInt(this.dataset.idx);
+            const action = this.dataset.action;
+            if (action === 'remove') {
+              receiptIngredients[idx].removed = true;
+            } else if (action === 'plus') {
+              receiptIngredients[idx].count++;
+            } else if (action === 'minus') {
+              if (receiptIngredients[idx].count > 1) receiptIngredients[idx].count--;
+            }
+            renderReceiptList();
+          });
+        });
+        const remaining = receiptIngredients.filter(function(i){ return !i.removed; }).length;
+        document.getElementById('receipt-modal-save').textContent = '냉장고에 저장 (' + remaining + '개)';
+      }
+
+      window.openReceiptModal = openReceiptModal;
+
+      document.getElementById('receipt-modal-close')?.addEventListener('click', function() {
+        document.getElementById('receipt-modal-overlay').style.display = 'none';
+      });
+
+      document.getElementById('receipt-modal-save')?.addEventListener('click', async function() {
+        const currentUser = (() => { try { return JSON.parse(localStorage.getItem('yrj_user')); } catch { return null; } })();
+        if (!currentUser) { showToast('로그인 후 이용해주세요'); return; }
+        const toSave = receiptIngredients.filter(function(i){ return !i.removed; });
+        if (!toSave.length) { showToast('저장할 재료가 없어요'); return; }
+        this.disabled = true;
+        this.textContent = '저장 중...';
+        try {
+          const res = await fetch('/api/receipt/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ingredients: toSave, user_id: currentUser.id })
+          });
+          const data = await res.json();
+          if (data.success) {
+            document.getElementById('receipt-modal-overlay').style.display = 'none';
+            showToast('✓ ' + data.saved + '개 재료가 저장됐어요');
+            toSave.forEach(function(item) {
+              Fridge.add(item.name, item.category_id, '', item.count || 1);
+            });
+          } else {
+            showToast(data.error || '저장 실패');
+            this.disabled = false;
+            renderReceiptList();
+          }
+        } catch(e) {
+          showToast('오류가 발생했어요');
+          this.disabled = false;
+          renderReceiptList();
+        }
+      });
+
+      document.getElementById('open-receipt-btn')
+        ?.addEventListener('click', function() {
+          const currentUser = (() => { try { return JSON.parse(localStorage.getItem('yrj_user')); } catch { return null; } })();
+          if (!currentUser) { showToast('로그인 후 이용해주세요'); return; }
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/*';
+          input.onchange = async function() {
+            const file = input.files[0];
+            if (!file) return;
+            showToast('영수증 분석 중...');
+            const form = new FormData();
+            form.append('image', file);
+            try {
+              const res  = await fetch('/api/receipt/analyze', { method: 'POST', body: form });
+              const data = await res.json();
+              if (!data.success || !data.ingredients || !data.ingredients.length) {
+                showToast('식재료를 찾지 못했어요'); return;
+              }
+              openReceiptModal(data.ingredients);
+            } catch(e) { showToast('오류가 발생했어요'); }
+          };
+          input.click();
+        });
+    })();
+
     /* ── 재료 수정 바텀시트 ── */
     const editOverlay    = document.getElementById('fridge-edit-overlay');
     const editExpiryEl   = document.getElementById('fridge-edit-expiry');
@@ -1011,7 +1128,9 @@ const Fridge = (() => {
       .map(i => i.name);
   }
 
-  return { init, updateRecipeSearchBtn, getSelectedNames };
+  function reload() { load(); render(); }
+
+  return { init, updateRecipeSearchBtn, getSelectedNames, add, render, reload, getKey: KEY };
 })();
 
 
@@ -1060,364 +1179,57 @@ function createEmptyState(icon, title, desc) {
 
 
 /* =========================================
-   레시피 더미 데이터
+   레시피 데이터 (API에서 로드)
    ========================================= */
-const RECIPES = [
-  {
-    id: 1,
-    emoji: '🍙',
-    name: '참치마요 주먹밥',
-    category: '간편식',
-    ingredients: ['참치캔', '마요네즈', '밥', '김', '소금', '참기름'],
-    keyIngredients: ['참치캔', '밥'],
-    time: 10,
-    difficulty: '쉬움',
-    instructions: [
-      '참치캔의 기름을 체에 밭쳐 충분히 빼요.',
-      '그릇에 참치, 마요네즈, 소금을 넣고 잘 섞어요.',
-      '손에 물을 적당히 묻히고 밥을 손바닥에 펴요.',
-      '중앙에 참치마요를 넣고 꼭꼭 쥐어 주먹밥 모양을 만들어요.',
-      '김으로 감싸고 참기름을 한 방울 떨어뜨리면 완성!',
-    ],
-    youtube_title: '참치마요 주먹밥 만들기 | 초간단 10분 레시피',
-    likes: 2418,
-    rating: 4.2,
-  },
-  {
-    id: 2,
-    emoji: '🍜',
-    name: '편의점 라면 나베',
-    category: '편의점 꿀조합',
-    ingredients: ['컵라면', '두부', '계란', '대파', '어묵'],
-    keyIngredients: ['컵라면', '두부'],
-    time: 15,
-    difficulty: '쉬움',
-    instructions: [
-      '냄비에 물 500ml를 넣고 센 불로 끓여요.',
-      '어묵과 두부를 한 입 크기로 잘라 넣어요.',
-      '컵라면 면과 스프를 냄비에 넣고 3분 끓여요.',
-      '대파를 어슷 썰어 넣고 계란을 깨뜨려 반숙으로 익혀요.',
-      '뚝배기에 담으면 더욱 분위기 있는 나베 완성!',
-    ],
-    youtube_title: '편의점 라면 나베 | 간단하지만 진짜 맛있는 혼밥 레시피',
-    likes: 1092,
-    rating: 3.9,
-  },
-  {
-    id: 3,
-    emoji: '🍳',
-    name: '냉장고 털이 볶음밥',
-    category: '한식',
-    ingredients: ['찬밥', '계란', '냉동 채소', '간장', '참기름', '마늘'],
-    keyIngredients: ['찬밥', '계란'],
-    time: 15,
-    difficulty: '쉬움',
-    instructions: [
-      '팬을 센 불로 달구고 기름을 두른 뒤 다진 마늘을 볶아요.',
-      '냉동 채소를 넣고 수분이 날아갈 때까지 2분 볶아요.',
-      '찬밥을 넣고 주걱으로 꾹꾹 눌러 가며 덩어리를 풀어요.',
-      '팬 가장자리에 간장을 두르고 빠르게 섞어요.',
-      '한쪽으로 볶음밥을 밀고 계란을 스크램블해 섞어요.',
-      '불을 끄고 참기름을 한 방울 두르면 완성!',
-    ],
-    youtube_title: '냉장고 털이 볶음밥 | 자투리 재료로 만드는 황금 볶음밥',
-    likes: 5731,
-    rating: 4.8,
-  },
-  {
-    id: 4,
-    emoji: '🥚',
-    name: '고추참치 계란말이',
-    category: '한식',
-    ingredients: ['고추참치캔', '계란', '쪽파', '소금', '식용유'],
-    keyIngredients: ['고추참치캔', '계란'],
-    time: 15,
-    difficulty: '보통',
-    instructions: [
-      '계란 3개를 그릇에 깨고 소금 한 꼬집을 넣어 잘 풀어요.',
-      '고추참치캔 기름을 빼고 쪽파를 잘게 썰어 계란물에 섞어요.',
-      '팬에 기름을 얇게 두르고 약불로 달구어요.',
-      '계란물의 절반을 붓고 표면이 반 정도 익으면 앞쪽으로 말아요.',
-      '나머지 계란물을 부어 같은 방법으로 말아서 통통한 롤을 만들어요.',
-      '한 김 식힌 후 먹기 좋게 썰면 완성!',
-    ],
-    youtube_title: '고추참치 계란말이 | 초보도 쉬운 밥도둑 반찬',
-    likes: 847,
-    rating: 3.7,
-  },
-  {
-    id: 5,
-    emoji: '🍱',
-    name: '떡볶이 치즈 덮밥',
-    category: '편의점 꿀조합',
-    ingredients: ['냉동 떡볶이', '밥', '슬라이스 치즈', '마요네즈'],
-    keyIngredients: ['냉동 떡볶이', '밥'],
-    time: 10,
-    difficulty: '쉬움',
-    instructions: [
-      '냉동 떡볶이를 전자레인지 4분 또는 팬에 물 조금 넣어 데워요.',
-      '따뜻한 밥을 그릇에 담고 떡볶이를 듬뿍 올려요.',
-      '슬라이스 치즈를 올리고 전자레인지에 30초 돌려 치즈를 녹여요.',
-      '마요네즈를 지그재그로 뿌리면 완성!',
-    ],
-    youtube_title: '떡볶이 치즈 덮밥 | 5분 완성 초간편 한 끼',
-    likes: 3256,
-    rating: 4.5,
-  },
-  {
-    id: 6,
-    emoji: '🥩',
-    name: '스팸 마늘종 볶음',
-    category: '한식',
-    ingredients: ['스팸', '마늘종', '고추장', '간장', '올리고당', '참기름'],
-    keyIngredients: ['스팸', '마늘종'],
-    time: 20,
-    difficulty: '보통',
-    instructions: [
-      '스팸을 한 입 크기 직육면체로 잘라요.',
-      '마늘종을 3~4cm 길이로 잘라요.',
-      '팬에 기름을 두르지 않고 스팸을 노릇하게 구워 꺼내요.',
-      '같은 팬에 마늘종을 볶다가 스팸을 다시 넣어요.',
-      '고추장, 간장, 올리고당(1:1:1)을 섞어 소스를 만들어 넣고 볶아요.',
-      '불을 끄고 참기름 한 방울로 마무리하면 완성!',
-    ],
-    youtube_title: '스팸 마늘종 볶음 | 밥 세 공기 각오하세요',
-    likes: 1604,
-    rating: 4.1,
-  },
-  {
-    id: 7,
-    emoji: '🥬',
-    name: '두부 간장 조림',
-    category: '다이어트',
-    ingredients: ['두부', '간장', '설탕', '참기름', '대파', '고춧가루'],
-    keyIngredients: ['두부', '간장'],
-    time: 20,
-    difficulty: '쉬움',
-    instructions: [
-      '두부를 1.5cm 두께로 썰고 키친타월로 물기를 제거해요.',
-      '팬에 기름을 두르고 중불에서 두부를 앞뒤로 노릇하게 구워요.',
-      '간장 3 : 설탕 1 : 물 3 비율로 양념을 만들어요.',
-      '구운 두부에 양념을 붓고 조려요.',
-      '국물이 반으로 줄면 대파와 고춧가루를 뿌려요.',
-      '참기름 한 방울로 마무리하면 완성!',
-    ],
-    youtube_title: '두부 간장 조림 | 건강하고 맛있는 기본 반찬',
-    likes: 2973,
-    rating: 4.3,
-  },
-  {
-    id: 8,
-    emoji: '🥞',
-    name: '김치 치즈 부침개',
-    category: '한식',
-    ingredients: ['묵은 김치', '슬라이스 치즈', '부침가루', '계란', '식용유'],
-    keyIngredients: ['묵은 김치', '부침가루'],
-    time: 20,
-    difficulty: '보통',
-    instructions: [
-      '묵은 김치를 잘게 다지고 국물은 꼭 짜요.',
-      '계란 1개, 부침가루 4큰술, 물 3큰술을 넣고 반죽해요.',
-      '반죽에 다진 김치를 넣어 섞어요.',
-      '팬에 기름을 두르고 반죽을 동그랗게 펴서 앞면을 구워요.',
-      '뒤집은 후 슬라이스 치즈를 올리고 뚜껑을 덮어 치즈를 녹여요.',
-      '노릇하게 익으면 접시에 담아 완성!',
-    ],
-    youtube_title: '김치 치즈 부침개 | 바삭하고 쫄깃한 황금 레시피',
-    likes: 4187,
-    rating: 4.6,
-  },
-  {
-    id: 9,
-    emoji: '🥔',
-    name: '감자 베이컨 볶음',
-    category: '양식',
-    ingredients: ['감자', '베이컨', '양파', '버터', '소금', '후추'],
-    keyIngredients: ['감자', '베이컨'],
-    time: 25,
-    difficulty: '보통',
-    instructions: [
-      '감자 껍질을 벗기고 얇게 슬라이스하거나 채 썰어요.',
-      '양파는 얇게 채 썰고, 베이컨은 2cm 폭으로 잘라요.',
-      '팬에 버터를 녹이고 감자를 중불에서 볶아요.',
-      '감자가 반 정도 익으면 베이컨과 양파를 넣어요.',
-      '소금, 후추로 간하고 감자가 완전히 익을 때까지 볶아요.',
-      '기호에 따라 파슬리를 뿌리면 서양식 감자 볶음 완성!',
-    ],
-    youtube_title: '감자 베이컨 볶음 | 집에서 만드는 브런치 레시피',
-    likes: 623,
-    rating: 3.6,
-  },
-  {
-    id: 10,
-    emoji: '🍵',
-    name: '삼각김밥 된장국',
-    category: '간편식',
-    ingredients: ['참치 삼각김밥', '된장', '두부', '대파', '멸치다시마'],
-    keyIngredients: ['참치 삼각김밥', '된장'],
-    time: 10,
-    difficulty: '쉬움',
-    instructions: [
-      '냄비에 물 400ml와 멸치다시마를 넣고 5분 끓여 육수를 내요.',
-      '다시마와 멸치를 건져내고 두부를 깍둑 썰어 넣어요.',
-      '된장 1.5큰술을 체에 풀어 넣고 중불로 끓여요.',
-      '대파를 어슷 썰어 넣고 한 번 더 끓이면 된장국 완성.',
-      '삼각김밥을 그릇에 담고 된장국과 함께 먹으면 든든한 한 끼!',
-    ],
-    youtube_title: '삼각김밥 된장국 | 5분 만에 만드는 따뜻한 한 끼',
-    likes: 1341,
-    rating: 4.0,
-  },
-];
+const RECIPES = [];
+
 
 
 /* =========================================
-   레시피 리뷰 더미 데이터
+   레시피 리뷰 더미 데이터 (제거됨)
    ========================================= */
-const RECIPE_REVIEWS = {
-  1: [
-    { user: '김민지', rating: 5, photo: '🍙', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '아이들이 너무 좋아해서 자주 만들어요. 참기름 한 방울이 진짜 포인트예요!' },
-    { user: '이준호', rating: 4, photo: '😋', grad: 'linear-gradient(135deg,#FEF3C7,#FDE68A)', text: '간단하고 맛있어요. 다음엔 명란 버전으로도 도전해볼게요.' },
-    { user: '박수아', rating: 5, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '도시락으로 싸갔더니 친구들이 레시피 달라고 난리였어요!' },
-  ],
-  2: [
-    { user: '최현우', rating: 4, photo: '🍜', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '혼밥할 때 최고예요. 어묵을 듬뿍 넣으니 더 맛있었어요.' },
-    { user: '정나연', rating: 3, photo: '🥚', grad: 'linear-gradient(135deg,#FFF7ED,#FED7AA)', text: '생각보다 짤 수 있으니 스프 양 조절이 필요해요.' },
-    { user: '강지민', rating: 5, photo: '🔥', grad: 'linear-gradient(135deg,#FFF1F2,#FFE4E6)', text: '야식으로 이만한 게 없어요! 치즈 추가하면 금상첨화.' },
-  ],
-  3: [
-    { user: '윤서현', rating: 5, photo: '🍳', grad: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', text: '볶음밥은 이 레시피가 정석인 것 같아요. 간장 둘러주는 타이밍이 핵심!' },
-    { user: '임도현', rating: 5, photo: '🌶️', grad: 'linear-gradient(135deg,#FFF1F2,#FECDD3)', text: '냉장고 정리도 되고 맛도 있고 일석이조예요. 자주 해먹어요.' },
-    { user: '한소희', rating: 4, photo: '🥬', grad: 'linear-gradient(135deg,#ECFDF5,#BBF7D0)', text: '스크램블 단계가 약간 어렵지만 맛은 최고예요!' },
-  ],
-  4: [
-    { user: '오지훈', rating: 4, photo: '🥚', grad: 'linear-gradient(135deg,#FFF7ED,#FFEDD5)', text: '고추참치 한 캔이면 충분해요. 촉촉하게 말리는 게 포인트.' },
-    { user: '신예린', rating: 3, photo: '🍱', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '처음엔 잘 안 말렸는데 두 번째엔 성공! 연습이 필요해요.' },
-    { user: '백지우', rating: 5, photo: '🌿', grad: 'linear-gradient(135deg,#FFFBEB,#FDE68A)', text: '밥도둑이 따로 없어요. 쪽파를 많이 넣을수록 더 맛있어요!' },
-  ],
-  5: [
-    { user: '류하은', rating: 5, photo: '🍱', grad: 'linear-gradient(135deg,#FFF1F2,#FECDD3)', text: '냉동 떡볶이로 이렇게 맛있는 게 되다니! 치즈 녹이는 순간 감동.' },
-    { user: '조민재', rating: 4, photo: '🧀', grad: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', text: '간단하고 빠르게 만들 수 있어서 자취생 필수 레시피예요.' },
-    { user: '서지유', rating: 5, photo: '🌶️', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '마요네즈 위에 청양고추 올리면 매콤달콤 최고 조합!' },
-  ],
-  6: [
-    { user: '문서준', rating: 5, photo: '🥩', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '스팸을 기름 없이 굽는 게 포인트예요. 노릇하게 구워야 제맛!' },
-    { user: '권지아', rating: 4, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#BBF7D0)', text: '마늘종이 아삭아삭해서 식감이 너무 좋아요. 밥 두 공기 먹었어요.' },
-    { user: '남현준', rating: 4, photo: '🍚', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '올리고당 대신 꿀을 넣어봤는데 더 맛있었어요!' },
-  ],
-  7: [
-    { user: '안지현', rating: 5, photo: '🥬', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '다이어트 중에 발견한 최고의 레시피예요. 포만감도 높아요.' },
-    { user: '황도윤', rating: 5, photo: '🌿', grad: 'linear-gradient(135deg,#FFFBEB,#FDE68A)', text: '두부를 단단하게 굽는 게 핵심이에요. 국물이 반으로 줄면 꺼내면 돼요!' },
-    { user: '송유진', rating: 4, photo: '🍱', grad: 'linear-gradient(135deg,#FFF1F2,#FFE4E6)', text: '고춧가루 좀 더 넣으니 매콤해서 더 맛있었어요. 밥반찬으로 딱이에요.' },
-  ],
-  8: [
-    { user: '전하린', rating: 5, photo: '🧀', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '치즈가 녹으면서 김치의 매운맛이 중화되는 게 신기해요. 완벽해요!' },
-    { user: '김태양', rating: 5, photo: '🌶️', grad: 'linear-gradient(135deg,#FFF1F2,#FECDD3)', text: '묵은 김치로 하면 훨씬 맛있어요. 반죽이 얇을수록 바삭해요.' },
-    { user: '이채원', rating: 4, photo: '🍳', grad: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', text: '겉은 바삭 속은 쫄깃해요. 치즈는 2장 넣는 게 더 맛있는 것 같아요!' },
-  ],
-  9: [
-    { user: '박세진', rating: 4, photo: '🥔', grad: 'linear-gradient(135deg,#FFFBEB,#FDE68A)', text: '버터 향이 정말 좋아요. 감자는 얇게 썰어야 골고루 익어요.' },
-    { user: '최아름', rating: 3, photo: '🥓', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '맛은 있는데 감자 익히는 시간이 생각보다 길어요. 약불이 포인트예요.' },
-    { user: '윤민호', rating: 4, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#BBF7D0)', text: '브런치로 딱이에요! 파슬리 뿌리면 카페 느낌 나서 좋았어요.' },
-  ],
-  10: [
-    { user: '정소윤', rating: 4, photo: '🍵', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '10분 만에 만들었는데 진짜 된장국 느낌이에요. 간이 딱 맞아요.' },
-    { user: '홍준서', rating: 4, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '편의점 재료로 이런 퀄리티가 나오다니 신기해요. 자취생 강추!' },
-    { user: '김다은', rating: 5, photo: '🍙', grad: 'linear-gradient(135deg,#FFF7ED,#FFEDD5)', text: '삼각김밥이 국물에 녹아서 밥이 자연스럽게 말려요. 이거 완전 꿀팁!' },
-  ],
-};
+const RECIPE_REVIEWS = {};
 
 /* =========================================
-   레시피 텍스트 리뷰 더미 데이터
+   레시피 텍스트 리뷰 더미 데이터 (제거됨)
    ========================================= */
-const RECIPE_TEXT_REVIEWS = {
-  1: [
-    { user: '노을빛주방',  rating: 4, date: '2025.11.02', text: '생각보다 훨씬 간단해요. 밥이 따뜻할 때 바로 만들어야 잘 뭉쳐져요.' },
-    { user: '혼밥러v',    rating: 5, date: '2025.10.28', text: '참기름 넣으니까 고급진 맛이 나요. 김을 가위로 잘라 감싸면 더 편해요.' },
-    { user: '자취9년차',  rating: 4, date: '2025.10.15', text: '마요네즈 양 조절이 포인트예요. 적게 넣으면 퍽퍽하고 많으면 느끼해요.' },
-    { user: '쿡쿡이',     rating: 3, date: '2025.09.30', text: '처음 해봤는데 모양 잡기가 좀 어렵네요. 맛은 합격점이에요!' },
-  ],
-  2: [
-    { user: '야식킹',     rating: 5, date: '2025.11.05', text: '밤에 혼자 먹기 딱 좋아요. 어묵 넉넉히 넣으면 진짜 나베 느낌!' },
-    { user: '컵라면탈출', rating: 3, date: '2025.10.22', text: '스프 반만 넣는 게 나아요. 두부는 미리 한 번 구우면 식감이 더 좋아요.' },
-    { user: '자취새내기',  rating: 4, date: '2025.10.09', text: '재료비가 거의 안 들어서 좋아요. 대파 넣는 타이밍을 마지막에 해야 아삭해요.' },
-    { user: 'ramen_lover', rating: 4, date: '2025.09.18', text: '계란 반숙 맞추기가 살짝 어렵지만 완성되면 완전 맛있어요!' },
-  ],
-  3: [
-    { user: '냉장고털이왕', rating: 5, date: '2025.11.08', text: '이 레시피 알고 나서 찬밥 버린 적이 없어요. 간장 타이밍이 진짜 핵심이에요.' },
-    { user: '매일볶음밥',   rating: 5, date: ''           + '2025.10.31', text: '팬 충분히 달구는 게 제일 중요해요. 연기 날 정도로 달궈야 볶음밥 특유의 향이 나요.' },
-    { user: '요리초보졸업', rating: 4, date: '2025.10.19', text: '냉동채소 대신 신선한 야채 썰어 넣으니 훨씬 맛있었어요.' },
-    { user: '주부9단',      rating: 5, date: '2025.10.03', text: '스크램블 단계에서 버터 살짝 더 넣으면 고소함이 두 배예요!' },
-  ],
-  4: [
-    { user: '반찬요정',   rating: 4, date: '2025.11.01', text: '고추참치 한 캔이면 양이 딱 맞아요. 약불로 천천히 말아야 터지지 않아요.' },
-    { user: '도시락쌤',   rating: 5, date: '2025.10.26', text: '도시락 단골 메뉴가 됐어요. 한 번에 두 줄 만들어서 냉장 보관해요.' },
-    { user: '계란요리전문', rating: 3, date: '2025.10.13', text: '처음엔 계란이 터져서 실패했어요. 불 세기 조절이 관건이에요.' },
-    { user: '밥도둑사냥꾼', rating: 5, date: '2025.09.27', text: '이거 먹고 밥 두 공기 뚝딱했어요. 쪽파 넉넉히 넣을수록 향이 좋아요!' },
-  ],
-  5: [
-    { user: '편의점셰프',   rating: 5, date: '2025.11.06', text: '냉동 떡볶이 브랜드마다 맛이 달라서 달달한 걸로 고르는 게 포인트예요.' },
-    { user: '자취 3년',     rating: 4, date: '2025.10.29', text: '치즈 두 장 넣으면 더 진해요. 마요네즈 격자 무늬로 뿌리면 예쁘게 나와요.' },
-    { user: '혼밥마스터',   rating: 5, date: '2025.10.16', text: '10분 안에 완성되는 퀄리티가 아니에요. 진짜 식당 수준이에요!' },
-    { user: 'cheesy_cook',  rating: 4, date: '2025.10.04', text: '고추장 한 숟갈 추가하면 더 맛있어요. 매콤달콤 조합이 최고예요.' },
-  ],
-  6: [
-    { user: '스팸러버',     rating: 5, date: '2025.11.03', text: '스팸을 기름 없이 굽는 게 처음엔 낯설었는데 훨씬 바삭하게 나와요.' },
-    { user: '반찬 블로거',  rating: 4, date: '2025.10.21', text: '마늘종은 살짝 아삭한 정도가 딱 좋아요. 너무 오래 볶으면 흐물해져요.' },
-    { user: '밑반찬전문가', rating: 4, date: '2025.10.08', text: '소스 비율 1:1:1이 황금 비율 맞아요. 달달하고 짭짤한 게 딱이에요.' },
-    { user: 'kfood_daily',  rating: 5, date: '2025.09.25', text: '만들어서 3일 냉장 보관해도 맛 유지돼요. 밑반찬으로 최고예요!' },
-  ],
-  7: [
-    { user: '다이어터',     rating: 5, date: '2025.11.07', text: '칼로리 낮으면서 이렇게 맛있는 반찬은 처음이에요. 단백질도 충분해요.' },
-    { user: '헬시라이프',   rating: 5, date: '2025.10.30', text: '두부 물기 제거가 핵심이에요. 꼭 키친타월로 꾹꾹 눌러줘야 해요.' },
-    { user: '식단관리중',   rating: 4, date: '2025.10.17', text: '간장 양을 레시피보다 살짝 줄였는데 더 담백해서 좋았어요.' },
-    { user: '두부요리탐구', rating: 4, date: '2025.10.05', text: '대파 대신 청양고추 올리면 매콤한 버전이 돼요. 이게 더 맛있어요!' },
-  ],
-  8: [
-    { user: '김치요리왕',   rating: 5, date: '2025.11.04', text: '묵은 김치 버리려다 이 레시피 보고 살렸어요. 진짜 맛있어요!' },
-    { user: '부침개장인',   rating: 5, date: '2025.10.23', text: '반죽 두께를 얇게 할수록 바삭해요. 치즈는 뒤집은 직후 올려야 잘 녹아요.' },
-    { user: '주말요리어',   rating: 4, date: '2025.10.11', text: '막걸리랑 먹으면 궁합이 완벽해요. 주말 점심으로 자주 만들어요.' },
-    { user: 'kimchi_fan',   rating: 5, date: '2025.09.29', text: '냉장고에 남은 묵은 김치 처리에 이만한 레시피가 없어요!' },
-  ],
-  9: [
-    { user: '감자요리덕후', rating: 4, date: '2025.11.02', text: '감자 두께가 균일해야 골고루 익어요. 채칼 쓰는 게 편해요.' },
-    { user: '브런치카페',   rating: 4, date: '2025.10.25', text: '버터 넉넉히 써야 고소함이 살아나요. 소금은 마지막에 넣어야 해요.' },
-    { user: '아침요리왕',   rating: 3, date: '2025.10.12', text: '감자가 잘 익는지 확인하면서 볶아야 해요. 타이밍 잡는 게 처음엔 어려워요.' },
-    { user: '홈카페_cook',  rating: 5, date: '2025.10.01', text: '로즈마리 살짝 올리면 레스토랑 느낌 나요. 강력 추천이에요!' },
-  ],
-  10: [
-    { user: '편의점고수',   rating: 4, date: '2025.11.05', text: '냉동 삼각김밥 말고 일반 삼각김밥도 잘 어울려요. 국물이 진해져서 좋아요.' },
-    { user: '자취끝판왕',   rating: 5, date: '2025.10.27', text: '5분 만에 이런 된장국이 나온다니 신기해요. 멸치다시마 우리는 게 진짜 중요해요.' },
-    { user: '국물요리팬',   rating: 4, date: '2025.10.14', text: '두부 넉넉히 넣으면 더 든든해요. 대파는 마지막에 넣어야 향이 살아요.' },
-    { user: '혼밥가이드',   rating: 5, date: '2025.09.28', text: '아침마다 해먹고 있어요. 국물이 진하고 깔끔해서 속이 편해요!' },
-  ],
-};
+const RECIPE_TEXT_REVIEWS = {};
 
 /* =========================================
    SNS 트렌딩 데이터
    ========================================= */
-const TREND_DATA = [
-  { recipeId: 3,  count: '3,241', tags: ['#오늘뭐먹지', '#간편한식'] },
-  { recipeId: 1,  count: '2,847', tags: ['#SNS화제',   '#냉털볶']   },
-  { recipeId: 8,  count: '1,923', tags: ['#집밥',       '#김치요리'] },
-  { recipeId: 5,  count: '1,520', tags: ['#편의점요리', '#5분완성']  },
-  { recipeId: 7,  count: '1,108', tags: ['#다이어트',   '#헬시푸드'] },
-  { recipeId: 2,  count:   '987', tags: ['#야식',       '#간식']     },
-];
+const TREND_DATA = [];
 
 
 /* =========================================
    Explore — 레시피 탐색 & 즐겨찾기
    ========================================= */
+/* =========================================
+   공용 헬퍼 — 레시피 이미지/이모지 렌더링
+   ========================================= */
+function setRecipeVisual(el, recipe) {
+  if (recipe.imageUrl) {
+    const img = document.createElement('img');
+    img.src = recipe.imageUrl;
+    img.alt = recipe.name;
+    img.className = 'recipe-thumb-img';
+    img.onerror = () => { el.removeChild(img); el.textContent = recipe.emoji || '🍽️'; };
+    el.appendChild(img);
+  } else {
+    el.textContent = recipe.emoji || '🍽️';
+  }
+}
+
 const Explore = (() => {
   const FAV_KEY = 'yorijori_favorites';
 
   // 숫자 타입만 허용하여 타입 불일치 방지
   const rawFavs = Storage.get(FAV_KEY, []);
-  let favorites        = new Set(Array.isArray(rawFavs) ? rawFavs.filter(Number.isFinite) : []);
-  let showFavOnly      = false;
-  let query            = '';
-  let activeCategory   = '전체';
+  let favorites         = new Set(Array.isArray(rawFavs) ? rawFavs.filter(Number.isFinite) : []);
+  let likedRecipes      = new Set(); // DB 좋아요한 레시피 ID
+  let showFavOnly       = false;
+  let query             = '';
+  let activeCategory    = '전체';
   let fridgeIngredients = []; // 냉장고 다중 선택으로 전달된 재료 이름 목록
 
   /* RECIPES에 있는 카테고리 목록 — API 로드 후에도 최신 목록 반환 */
@@ -1429,6 +1241,78 @@ const Explore = (() => {
 
   function saveFavorites() {
     Storage.set(FAV_KEY, [...favorites]);
+  }
+
+  /* ---------- DB 좋아요 로드 ---------- */
+
+  async function loadLiked() {
+    try {
+      const u = JSON.parse(localStorage.getItem('yrj_user'));
+      if (!u || !u.id) return;
+      const res  = await fetch(`/api/recipes/liked?userId=${encodeURIComponent(u.id)}`);
+      const ids  = await res.json();
+      likedRecipes = new Set(Array.isArray(ids) ? ids : []);
+      // 이미 렌더된 카드 하트 상태 갱신
+      document.querySelectorAll('.explore-card').forEach(card => {
+        const id  = parseInt(card.dataset.id);
+        const btn = card.querySelector('.heart-btn');
+        if (btn) btn.classList.toggle('active', likedRecipes.has(id));
+      });
+    } catch { /* 조용히 무시 */ }
+  }
+
+  /* ---------- 좋아요 토글 (DB 연동) ---------- */
+
+  async function toggleLike(id) {
+    const u = JSON.parse(localStorage.getItem('yrj_user') || 'null');
+    if (!u || !u.id) {
+      alert('로그인 후 이용해주세요!');
+      return;
+    }
+
+    // 낙관적 UI 업데이트
+    const isLiked = likedRecipes.has(id);
+    const card    = document.querySelector(`.explore-card[data-id="${id}"]`);
+    const btn     = card?.querySelector('.heart-btn');
+    const countEl = card?.querySelector('.heart-count');
+
+    if (isLiked) {
+      likedRecipes.delete(id);
+    } else {
+      likedRecipes.add(id);
+    }
+    if (btn) btn.classList.toggle('active', !isLiked);
+    if (countEl) {
+      const cur = parseInt(countEl.textContent.replace(/,/g, '')) || 0;
+      countEl.textContent = (isLiked ? cur - 1 : cur + 1).toLocaleString('ko-KR');
+    }
+
+    // 서버에 반영
+    try {
+      const res  = await fetch(`/api/recipes/${id}/like`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ userId: u.id }),
+      });
+      const data = await res.json();
+      // 서버 실제 카운트로 보정
+      if (countEl && typeof data.count === 'number') {
+        countEl.textContent = data.count.toLocaleString('ko-KR');
+      }
+    } catch {
+      // 실패 시 낙관적 업데이트 롤백
+      if (isLiked) likedRecipes.add(id); else likedRecipes.delete(id);
+      if (btn) btn.classList.toggle('active', isLiked);
+      if (countEl) {
+        const cur = parseInt(countEl.textContent.replace(/,/g, '')) || 0;
+        countEl.textContent = (isLiked ? cur + 1 : cur - 1).toLocaleString('ko-KR');
+      }
+    }
+
+    // 즐겨찾기도 동기화
+    if (likedRecipes.has(id)) favorites.add(id); else favorites.delete(id);
+    saveFavorites();
+    if (showFavOnly) render();
   }
 
   /* ---------- 즐겨찾기 토글 (카드 전체 재렌더 없이 해당 버튼만 업데이트) ---------- */
@@ -1584,7 +1468,7 @@ const Explore = (() => {
 
     const thumb = document.createElement('div');
     thumb.className = 'explore-card-thumb';
-    thumb.textContent = recipe.emoji;
+    setRecipeVisual(thumb, recipe);
 
     const body = document.createElement('div');
     body.className = 'explore-card-body';
@@ -1623,15 +1507,16 @@ const Explore = (() => {
     main.append(thumb, body);
 
     /* 하트 버튼 */
+    const isLiked  = likedRecipes.has(recipe.id);
     const heartBtn = document.createElement('button');
-    heartBtn.className = `heart-btn${isFav ? ' active' : ''}`;
-    heartBtn.setAttribute('aria-label', isFav ? '즐겨찾기 해제' : '즐겨찾기 추가');
+    heartBtn.className = `heart-btn${isLiked ? ' active' : ''}`;
+    heartBtn.setAttribute('aria-label', isLiked ? '좋아요 취소' : '좋아요');
     heartBtn.innerHTML = `<svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
     </svg>`;
     heartBtn.addEventListener('click', e => {
       e.stopPropagation();
-      toggleFavorite(recipe.id);
+      toggleLike(recipe.id);
     });
 
     const heartCount = document.createElement('span');
@@ -1641,8 +1526,9 @@ const Explore = (() => {
     const heartWrap = document.createElement('div');
     heartWrap.className = 'heart-wrap';
     heartWrap.append(heartBtn, heartCount);
+    heartWrap.addEventListener('click', e => e.stopPropagation());
 
-    // 카드 클릭 → 상세 모달 (하트 버튼은 stopPropagation으로 제외됨)
+    // 카드 클릭 → 상세 모달 (하트 영역은 stopPropagation으로 제외됨)
     article.addEventListener('click', () => RecipeModal.open(recipe.id));
 
     article.append(main, heartWrap);
@@ -1706,7 +1592,7 @@ const Explore = (() => {
 
     const emojiEl = document.createElement('div');
     emojiEl.className = 'reco-card-emoji';
-    emojiEl.textContent = recipe.emoji;
+    setRecipeVisual(emojiEl, recipe);
 
     const bookmarkBtn = document.createElement('button');
     bookmarkBtn.className = `reco-card-bookmark${favorites.has(recipe.id) ? ' active' : ''}`;
@@ -1762,7 +1648,7 @@ const Explore = (() => {
     if (!strip) return;
     strip.innerHTML = '';
 
-    const fridgeData    = Storage.get('yorijori_ingredients', []);
+    const fridgeData    = Storage.get(Fridge.getKey(), []);
     const myIngredients = new Set(
       fridgeData.map(i => (typeof i === 'string' ? i : i.name).toLowerCase())
     );
@@ -1821,7 +1707,7 @@ const Explore = (() => {
     // 이모지
     const emojiEl = document.createElement('div');
     emojiEl.className = 'trend-card-emoji';
-    emojiEl.textContent = recipe.emoji;
+    setRecipeVisual(emojiEl, recipe);
 
     // 불꽃 오버레이 (1~3위만)
     if (rank <= 3) {
@@ -1881,10 +1767,43 @@ const Explore = (() => {
     const strip = document.getElementById('sns-trend-strip');
     if (!strip) return;
     strip.innerHTML = '';
+    if (TREND_DATA.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'trend-empty';
+      empty.textContent = '트렌딩 레시피를 불러오는 중...';
+      strip.appendChild(empty);
+      return;
+    }
     TREND_DATA.forEach((trend, i) => {
       const card = buildTrendCard(trend, i + 1);
       if (card) strip.appendChild(card);
     });
+  }
+
+  async function loadTrending() {
+    const TAG_POOL = [
+      ['#SNS화제', '#쉬운요리'],
+      ['#인기급상승', '#오늘뭐먹지'],
+      ['#집밥', '#맛있어'],
+      ['#10분요리', '#간단레시피'],
+      ['#요리챌린지', '#밥스타그램'],
+    ];
+    try {
+      const res = await fetch('/api/recipes/trending');
+      if (!res.ok) return;
+      const recipes = await res.json();
+      TREND_DATA.length = 0;
+      recipes.forEach((r, i) => {
+        TREND_DATA.push({
+          recipeId: r.id,
+          count:    Math.floor(Math.random() * 350) + 80,
+          tags:     TAG_POOL[i % TAG_POOL.length],
+        });
+      });
+      renderTrendStrip();
+    } catch (e) {
+      console.error('[trending]', e);
+    }
   }
 
   function init() {
@@ -1917,7 +1836,7 @@ const Explore = (() => {
     }
   }
 
-  return { init, render, refreshRecos, toggleFavorite, isFavorite: id => favorites.has(id), filterByIngredients, clearFridgeFilter };
+  return { init, render, refreshRecos, toggleFavorite, isFavorite: id => favorites.has(id), filterByIngredients, clearFridgeFilter, loadTrending, loadLiked };
 })();
 
 
@@ -1977,7 +1896,7 @@ const Home = (() => {
 
     // 냉장고 재료 관련 질문
     if (lower.includes('냉장고') || lower.includes('내 재료') || lower.includes('있는 재료')) {
-      const items = Storage.get('yorijori_ingredients', []);
+      const items = Storage.get(Fridge.getKey(), []);
       if (!items.length) {
         return '냉장고에 아직 재료가 없어요 🧊\n냉장고 탭에서 재료를 추가해 주세요!';
       }
@@ -1995,9 +1914,47 @@ const Home = (() => {
     return '흠, 잘 모르겠어요 😅\n레시피 탐색 탭에서 직접 검색해 보시거나,\n냉장고 재료를 등록하면 맞춤 추천을 드릴 수 있어요!';
   }
 
+  /* ---------- 레시피 카드 표시 ---------- */
+
+  function appendRecipeCards(recipes) {
+    const messagesEl = document.getElementById('chat-messages');
+    if (!messagesEl) return;
+    if (!recipes || recipes.length === 0) return;
+
+    const msg = document.createElement('div');
+    msg.className = 'chat-msg chat-ai';
+
+    const avatar = document.createElement('span');
+    avatar.className = 'chat-avatar';
+    avatar.textContent = '🤖';
+    msg.appendChild(avatar);
+
+    const cards = document.createElement('div');
+    cards.className = 'chat-recipe-cards';
+
+    recipes.forEach(r => {
+      let keys = [];
+      try { keys = JSON.parse(r.key_ingredients || '[]'); } catch { keys = []; }
+
+      const card = document.createElement('div');
+      card.className = 'chat-recipe-card';
+      card.innerHTML = `
+        <div class="chat-recipe-name">${r.name}</div>
+        <div class="chat-recipe-meta">⏱ ${r.cook_time_min}분 · ${r.difficulty}</div>
+        ${keys.length ? `<div class="chat-recipe-ingredients">${keys.slice(0, 4).join(', ')}</div>` : ''}
+      `;
+      card.addEventListener('click', () => RecipeModal.open(r.id));
+      cards.appendChild(card);
+    });
+
+    msg.appendChild(cards);
+    messagesEl.appendChild(msg);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
   /* ---------- 채팅 메시지 추가 ---------- */
 
-  function appendMessage(text, role) {
+  function appendMessage(text, role, save = false) {
     const messagesEl = document.getElementById('chat-messages');
     if (!messagesEl) return;
 
@@ -2044,6 +2001,41 @@ const Home = (() => {
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  /* ---------- 채팅 기록 저장/불러오기 ---------- */
+
+  function getLoggedInUser() {
+    try { return JSON.parse(localStorage.getItem('yrj_user')); } catch { return null; }
+  }
+
+  function saveChatMessage(role, message) {
+    const user = getLoggedInUser();
+    if (!user) return;
+    fetch('/api/chat/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id, role, message }),
+    }).catch(() => {});
+  }
+
+  let chatHistoryLoaded = false;
+
+  async function loadChatHistory() {
+    const user = getLoggedInUser();
+    if (!user || chatHistoryLoaded) return;
+    try {
+      const res  = await fetch(`/api/chat/history/${user.id}`);
+      const rows = await res.json();
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      const messagesEl = document.getElementById('chat-messages');
+      if (!messagesEl) return;
+      messagesEl.innerHTML = '';
+      rows.forEach(row => appendMessage(row.message, row.role, false));
+      chatHistoryLoaded = true;
+    } catch (e) {
+      console.error('[chat-history load]', e);
+    }
+  }
+
   /* ---------- 메시지 전송 처리 ---------- */
 
   function sendMessage() {
@@ -2056,15 +2048,39 @@ const Home = (() => {
     sendBtn.disabled = true;
 
     appendMessage(text, 'user');
+    saveChatMessage('user', text);
     showTyping();
 
-    // 800–1500ms 랜덤 지연으로 실제 응답 느낌 부여
-    const delay = 800 + Math.random() * 700;
-    setTimeout(() => {
-      sendBtn.disabled = false;
-      appendMessage(getFakeResponse(text), 'ai');
-      input.focus();
-    }, delay);
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text })
+    })
+      .then(res => res.json())
+      .then(data => {
+        sendBtn.disabled = false;
+        const reply = data.reply || '응답을 받지 못했어요.';
+        appendMessage(reply, 'ai');
+        saveChatMessage('ai', reply);
+
+        if (data.action) {
+          if (data.action.type === 'FRIDGE_SAVE' && Array.isArray(data.action.items)) {
+            data.action.items.forEach(item => {
+              Fridge.add(item.name, item.category || '채소/과일', '', item.count || 1);
+            });
+            Fridge.render();
+          } else if (data.action.type === 'RECIPE_SEARCH') {
+            appendRecipeCards(data.action.recipes);
+          }
+        }
+
+        input.focus();
+      })
+      .catch(() => {
+        sendBtn.disabled = false;
+        appendMessage('서버 연결에 실패했어요. 잠시 후 다시 시도해주세요.', 'ai');
+        input.focus();
+      });
   }
 
   /* ---------- 초기화 ---------- */
@@ -2076,7 +2092,7 @@ const Home = (() => {
 
     sendBtn?.addEventListener('click', sendMessage);
     input?.addEventListener('keydown', e => {
-      if (e.key === 'Enter') sendMessage();
+      if (e.key === 'Enter' && !e.isComposing) sendMessage();
     });
 
     /* ── 액션 메뉴 (+ 버튼) ── */
@@ -2107,6 +2123,65 @@ const Home = (() => {
     // 사진 업로드 (추후 구현)
     document.getElementById('action-photo')?.addEventListener('click', () => {
       closeMenu();
+      document.getElementById('open-receipt-btn')?.click();
+    });
+
+    /* ── 마이크 버튼 (음성 인식) ── */
+    const micBtn = document.getElementById('chat-mic-btn');
+    const chatInput = document.getElementById('chat-input');
+    let mediaRecorder = null;
+    let audioChunks = [];
+
+    micBtn?.addEventListener('click', async () => {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+
+        micBtn.classList.add('recording');
+        micBtn.setAttribute('aria-label', '녹음 중지');
+
+        mediaRecorder.addEventListener('dataavailable', e => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        });
+
+        mediaRecorder.addEventListener('stop', async () => {
+          micBtn.classList.remove('recording');
+          micBtn.setAttribute('aria-label', '음성 인식');
+          stream.getTracks().forEach(t => t.stop());
+
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          appendMessage('🎤 음성 인식 중...', 'ai');
+
+          try {
+            const response = await fetch('/api/scan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'audio/webm' },
+              body: audioBlob
+            });
+            const data = await response.json();
+            if (data.transcript) {
+              document.getElementById('chat-typing')?.remove();
+              const lastAi = document.querySelectorAll('.chat-msg.chat-ai');
+              lastAi[lastAi.length - 1]?.remove();
+              if (chatInput) chatInput.value = data.transcript;
+            } else {
+              appendMessage('음성을 인식하지 못했어요. 다시 시도해주세요.', 'ai');
+            }
+          } catch {
+            appendMessage('음성 인식에 실패했어요. 다시 시도해주세요.', 'ai');
+          }
+        });
+
+        mediaRecorder.start();
+      } catch {
+        appendMessage('마이크 접근 권한이 필요합니다.', 'ai');
+      }
     });
 
     /* ── 재료 선택 칩 ── */
@@ -2117,7 +2192,7 @@ const Home = (() => {
 
     function openIngredientSelector() {
       // 냉장고 저장 데이터 또는 폴백 사용
-      const stored = Storage.get('yorijori_ingredients', []);
+      const stored = Storage.get(Fridge.getKey(), []);
       const names  = stored.length
         ? stored.map(i => i.name || i)
         : FALLBACK_INGREDIENTS;
@@ -2176,17 +2251,123 @@ const Home = (() => {
       }
     });
 
+    /* 대화 기록 지우기 버튼 */
+    document.getElementById('clear-chat-btn')?.addEventListener('click', () => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML = `
+        <div style="background:#1e1e1e;border-radius:16px;padding:24px;width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.4);text-align:center;">
+          <p style="margin:0 0 20px;font-size:15px;color:#fff;line-height:1.5;">대화 기록을 삭제하겠습니까?</p>
+          <div style="display:flex;gap:8px;">
+            <button id="clear-cancel-btn" style="flex:1;padding:10px;border-radius:10px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer;font-size:14px;">취소</button>
+            <button id="clear-confirm-btn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#e53935;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">삭제</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#clear-cancel-btn').addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+      overlay.querySelector('#clear-confirm-btn').addEventListener('click', () => {
+        overlay.remove();
+        // UI 초기화
+        const messagesEl = document.getElementById('chat-messages');
+        if (messagesEl) messagesEl.innerHTML = '';
+        chatHistoryLoaded = false;
+        showChips();
+        // DB에서도 삭제 (로그인 시에만)
+        const user = getLoggedInUser();
+        if (user && user.id) {
+          fetch(`/api/chat/history/${user.id}`, { method: 'DELETE' }).catch(() => {});
+        }
+      });
+    });
+
     document.querySelectorAll('.quick-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         if (!input) return;
-        input.value = chip.dataset.text;
+        const chipText = chip.dataset.text;
+
+        // 냉장고 재료 관리: 현재 냉장고 목록 보여주고 추가/수정 안내
+        if (chipText.includes('냉장고 재료 관리')) {
+          appendMessage(chipText, 'user');
+          hideChips();
+          const items = Storage.get(Fridge.getKey(), []);
+          if (items.length === 0) {
+            appendMessage(
+              '냉장고가 비어있어요 🧊\n아래처럼 말씀해 주시면 재료를 바로 추가해 드릴게요!\n\n예) "오이 2개 넣어줘" / "당근이랑 계란 추가해줘"',
+              'ai'
+            );
+          } else {
+            const list = items.map(i => `• ${i.name || i}${i.count ? ' ' + i.count + '개' : ''}`).join('\n');
+            appendMessage(
+              `현재 냉장고 재료예요 🧊\n${list}\n\n재료를 추가하거나 수정하려면 말씀해 주세요!\n예) "당근 3개 추가해줘" / "우유 빼줘"`,
+              'ai'
+            );
+          }
+          showChips();
+          return;
+        }
+
+        // 추천 레시피: 냉장고 재료 기반으로 API에 레시피 검색 요청
+        if (chipText.includes('추천 레시피')) {
+          const items = Storage.get(Fridge.getKey(), []);
+          if (items.length === 0) {
+            appendMessage(chipText, 'user');
+            appendMessage(
+              '냉장고에 재료가 없어요 🧊\n"냉장고 재료 관리"를 눌러 재료를 추가하거나 냉장고 탭에서 등록해 주세요!',
+              'ai'
+            );
+            showChips();
+            return;
+          }
+          const names = items.map(i => i.name || i).join(', ');
+          input.value = `냉장고에 ${names} 있어. 이 재료로 만들 수 있는 레시피 추천해줘`;
+          sendMessage();
+          showChips();
+          return;
+        }
+
+        // 인기 요리: SNS 트렌딩 레시피를 채팅창에 카드로 표시
+        if (chipText.includes('인기 요리')) {
+          appendMessage(chipText, 'user');
+          hideChips();
+          showTyping();
+          fetch('/api/recipes/trending')
+            .then(res => res.json())
+            .then(recipes => {
+              appendMessage('좋아요가 많은 인기 레시피예요 🔥', 'ai');
+              const mapped = recipes.slice(0, 3).map(r => ({
+                id:             r.id,
+                name:           r.name,
+                cook_time_min:  r.time,
+                difficulty:     r.difficulty,
+                key_ingredients: JSON.stringify(r.keyIngredients || []),
+              }));
+              appendRecipeCards(mapped);
+              showChips();
+            })
+            .catch(() => {
+              appendMessage('인기 레시피를 불러오지 못했어요. 잠시 후 다시 시도해주세요.', 'ai');
+              showChips();
+            });
+          return;
+        }
+
+        // 기본: 그대로 전송
+        input.value = chipText;
         sendMessage();
-        showChips(); // 전송 후 칩 다시 표시
+        showChips();
       });
     });
   }
 
-  return { init };
+  function resetChatHistory() {
+    chatHistoryLoaded = false;
+    const messagesEl = document.getElementById('chat-messages');
+    if (messagesEl) messagesEl.innerHTML = '';
+  }
+
+  return { init, loadChatHistory, resetChatHistory };
 })();
 
 
@@ -2246,7 +2427,7 @@ const RecipeModal = (() => {
 
     const emojiEl = document.createElement('div');
     emojiEl.className = 'modal-recipe-emoji';
-    emojiEl.textContent = recipe.emoji;
+    setRecipeVisual(emojiEl, recipe);
 
     const info = document.createElement('div');
     info.className = 'modal-recipe-info';
@@ -2320,207 +2501,260 @@ const RecipeModal = (() => {
     ytTitle.className = 'modal-section-title';
     ytTitle.textContent = '유튜브 참고';
 
-    // 관련 영상 카드 목록 (첫 번째는 레시피 고유 제목, 나머지는 연관 제목 자동 생성)
-    const ytVideos = [
-      { title: recipe.youtube_title,                                          grad: 'linear-gradient(135deg,#1a1a2e,#0f3460)' },
-      { title: `${recipe.name} 황금 레시피 | 영양사가 알려주는 비법`,         grad: 'linear-gradient(135deg,#1e3a1e,#2a5c1e)' },
-      { title: `${recipe.name} 더 맛있게 | 소스 & 플레이팅 꿀팁`,            grad: 'linear-gradient(135deg,#3a1a1a,#6b2828)' },
-      { title: `${recipe.name} 응용편 | 냉장고 재료로 색다르게 만들기`,       grad: 'linear-gradient(135deg,#1a2a3a,#2c4a6e)' },
-    ];
-
     const ytScroll = document.createElement('div');
     ytScroll.className = 'modal-yt-scroll';
 
-    ytVideos.forEach(v => {
-      const card = document.createElement('div');
-      card.className = 'modal-yt-card';
-      card.innerHTML = `
-        <div class="modal-yt-thumb" style="background:${v.grad}">
-          <div class="modal-yt-play">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          </div>
-          <span class="modal-yt-label">YouTube</span>
-        </div>
-        <p class="modal-yt-title">${v.title}</p>
+    // 로딩 스켈레톤 3개
+    for (let i = 0; i < 3; i++) {
+      const skeleton = document.createElement('div');
+      skeleton.className = 'modal-yt-card modal-yt-skeleton';
+      skeleton.innerHTML = `
+        <div class="modal-yt-thumb" style="background:#2a2a2a;"></div>
+        <p class="modal-yt-title" style="background:#2a2a2a;color:transparent;border-radius:4px;">로딩 중...</p>
       `;
-      ytScroll.appendChild(card);
-    });
+      ytScroll.appendChild(skeleton);
+    }
 
     ytSection.append(ytTitle, ytScroll);
     frag.appendChild(ytSection);
 
-    /* 리뷰 섹션 */
-    // DB 레시피는 recipe.reviews 배열 사용, 로컬 레시피는 하드코딩 객체 사용
-    const photoReviews = recipe.source === 'db' ? [] : (RECIPE_REVIEWS[recipe.id] || []);
-    const textReviews  = recipe.source === 'db'
-      ? (recipe.reviews || []).map(r => ({ ...r, date: r.date || '' }))
-      : (RECIPE_TEXT_REVIEWS[recipe.id] || []);
-    const totalReviews = photoReviews.length + textReviews.length;
-
-    if (totalReviews > 0) {
-      frag.appendChild(makeDivider());
-
-      const reviewSection = document.createElement('div');
-      reviewSection.className = 'modal-section';
-
-      // 섹션 타이틀 행
-      const reviewTitleRow = document.createElement('div');
-      reviewTitleRow.className = 'modal-review-title-row';
-
-      const reviewTitle = document.createElement('h3');
-      reviewTitle.className = 'modal-section-title';
-      reviewTitle.textContent = '리뷰';
-
-      const reviewCount = document.createElement('span');
-      reviewCount.className = 'modal-review-count';
-      reviewCount.textContent = totalReviews;
-
-      reviewTitleRow.append(reviewTitle, reviewCount);
-
-      // ── 헬퍼: 별점 DOM ──────────────────────────────
-      const starSVG = `<svg viewBox="0 0 24 24" class="review-star"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
-      function buildStars(rating) {
-        const wrap = document.createElement('div');
-        wrap.className = 'modal-review-stars';
-        for (let i = 0; i < 5; i++) {
-          const s = document.createElement('span');
-          s.className = `review-star-wrap${i < rating ? ' filled' : ''}`;
-          s.innerHTML = starSVG;
-          wrap.appendChild(s);
+    // YouTube API 비동기 로드
+    fetch(`/api/youtube/search?q=${encodeURIComponent(recipe.name)}&recipeId=${recipe.id}`)
+      .then(r => r.json())
+      .then(videos => {
+        ytScroll.innerHTML = '';
+        if (!Array.isArray(videos) || videos.length === 0) {
+          ytScroll.innerHTML = '<p style="color:#aaa;padding:12px;">관련 영상을 찾지 못했습니다.</p>';
+          return;
         }
-        return wrap;
-      }
-
-      // ── 헬퍼: 포토 리뷰 아이템 ───────────────────────
-      function buildPhotoItem(rv) {
-        const item = document.createElement('div');
-        item.className = 'modal-review-item';
-
-        const content = document.createElement('div');
-        content.className = 'modal-review-content';
-
-        const reviewHeader = document.createElement('div');
-        reviewHeader.className = 'modal-review-header';
-
-        const userName = document.createElement('span');
-        userName.className = 'modal-review-user';
-        userName.textContent = rv.user;
-
-        reviewHeader.append(userName, buildStars(rv.rating));
-
-        const reviewText = document.createElement('p');
-        reviewText.className = 'modal-review-text';
-        reviewText.textContent = rv.text;
-
-        content.append(reviewHeader, reviewText);
-
-        const photo = document.createElement('div');
-        photo.className = 'modal-review-photo';
-        photo.style.background = rv.grad;
-        photo.textContent = rv.photo;
-
-        item.append(content, photo);
-        return item;
-      }
-
-      // ── 헬퍼: 텍스트 리뷰 아이템 ─────────────────────
-      function buildTextItem(rv) {
-        const item = document.createElement('div');
-        item.className = 'modal-text-review-item';
-
-        const meta = document.createElement('div');
-        meta.className = 'modal-text-review-meta';
-
-        const userName = document.createElement('span');
-        userName.className = 'modal-review-user';
-        userName.textContent = rv.user;
-
-        const rightMeta = document.createElement('div');
-        rightMeta.className = 'modal-text-review-right-meta';
-        rightMeta.append(buildStars(rv.rating));
-
-        if (rv.date) {
-          const date = document.createElement('span');
-          date.className = 'modal-text-review-date';
-          date.textContent = rv.date;
-          rightMeta.appendChild(date);
-        }
-
-        meta.append(userName, rightMeta);
-
-        const reviewText = document.createElement('p');
-        reviewText.className = 'modal-review-text';
-        reviewText.textContent = rv.text;
-
-        item.append(meta, reviewText);
-        return item;
-      }
-
-      // ── 포토 모아보기 갤러리 ─────────────────────────
-      const GALLERY_MAX = 5;
-      const galleryWrap = document.createElement('div');
-      galleryWrap.className = 'modal-photo-gallery';
-
-      photoReviews.forEach((rv, idx) => {
-        const thumb = document.createElement('div');
-        thumb.className = 'modal-photo-thumb';
-        thumb.style.background = rv.grad;
-
-        // 초과분: 마지막 슬롯에 +N 오버레이
-        if (idx === GALLERY_MAX - 1 && photoReviews.length > GALLERY_MAX) {
-          const over = document.createElement('div');
-          over.className = 'modal-photo-thumb-more';
-          over.textContent = `+${photoReviews.length - (GALLERY_MAX - 1)}`;
-          thumb.appendChild(over);
-        } else {
-          thumb.textContent = rv.photo;
-        }
-
-        // 라이트박스 열기 (전체 목록 + 현재 인덱스)
-        thumb.addEventListener('click', () => PhotoLightbox.open(photoReviews, idx));
-
-        galleryWrap.appendChild(thumb);
-        if (idx >= GALLERY_MAX - 1 && photoReviews.length > GALLERY_MAX) return;
+        videos.forEach(v => {
+          const card = document.createElement('div');
+          card.className = 'modal-yt-card';
+          card.style.cursor = 'pointer';
+          card.innerHTML = `
+            <div class="modal-yt-thumb" style="background:#000;position:relative;overflow:hidden;">
+              <img src="${v.thumbnail}" alt="${v.title}" style="width:100%;height:100%;object-fit:cover;display:block;">
+            </div>
+            <p class="modal-yt-title">${v.title}</p>
+          `;
+          card.addEventListener('click', () => window.open(v.url, '_blank'));
+          ytScroll.appendChild(card);
+        });
+      })
+      .catch(() => {
+        ytScroll.innerHTML = '<p style="color:#aaa;padding:12px;">영상을 불러오지 못했습니다.</p>';
       });
 
-      // ── 초기 렌더 (포토 2 + 텍스트 2) ────────────────
-      const INIT = 2;
-      const photoList = document.createElement('div');
-      photoList.className = 'modal-review-list';
-      photoReviews.slice(0, INIT).forEach(rv => photoList.appendChild(buildPhotoItem(rv)));
+    /* 리뷰 섹션 */
+    frag.appendChild(makeDivider());
 
-      const textList = document.createElement('div');
-      textList.className = 'modal-text-review-list';
-      textReviews.slice(0, INIT).forEach(rv => textList.appendChild(buildTextItem(rv)));
+    const reviewSection = document.createElement('div');
+    reviewSection.className = 'modal-section';
 
-      // ── 더보기 버튼 ───────────────────────────────────
-      const hiddenCount = (photoReviews.length - Math.min(INIT, photoReviews.length))
-                        + (textReviews.length  - Math.min(INIT, textReviews.length));
+    // 현재 로그인 유저
+    let currentReviewer = null;
+    try { currentReviewer = JSON.parse(localStorage.getItem('yrj_user')); } catch {}
 
-      reviewSection.append(reviewTitleRow, galleryWrap, photoList, textList);
+    // 리뷰 데이터 (DB 레시피)
+    let reviews = recipe.source === 'db'
+      ? (recipe.reviews || []).map(r => ({ ...r, date: r.date || '' }))
+      : [];
 
-      if (hiddenCount > 0) {
-        const moreBtn = document.createElement('button');
-        moreBtn.className = 'modal-review-more-btn';
-        moreBtn.textContent = `리뷰 더보기 (${hiddenCount}개)`;
-        moreBtn.addEventListener('click', () => {
-          photoReviews.slice(INIT).forEach(rv => {
-            const el = buildPhotoItem(rv);
-            el.classList.add('review-item--fadein');
-            photoList.appendChild(el);
-          });
-          textReviews.slice(INIT).forEach(rv => {
-            const el = buildTextItem(rv);
-            el.classList.add('review-item--fadein');
-            textList.appendChild(el);
-          });
-          moreBtn.remove();
-        });
-        reviewSection.appendChild(moreBtn);
+    const starSVG = `<svg viewBox="0 0 24 24" class="review-star"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+
+    function buildStars(rating) {
+      const wrap = document.createElement('div');
+      wrap.className = 'modal-review-stars';
+      for (let i = 0; i < 5; i++) {
+        const s = document.createElement('span');
+        s.className = `review-star-wrap${i < rating ? ' filled' : ''}`;
+        s.innerHTML = starSVG;
+        wrap.appendChild(s);
+      }
+      return wrap;
+    }
+
+    // ── 섹션 타이틀 ──────────────────────────────────
+    const reviewTitleRow = document.createElement('div');
+    reviewTitleRow.className = 'modal-review-title-row';
+    const reviewTitle = document.createElement('h3');
+    reviewTitle.className = 'modal-section-title';
+    reviewTitle.textContent = '리뷰';
+    const reviewCountEl = document.createElement('span');
+    reviewCountEl.className = 'modal-review-count';
+    reviewCountEl.textContent = reviews.length;
+    reviewTitleRow.append(reviewTitle, reviewCountEl);
+
+    // ── 리뷰 작성 폼 ─────────────────────────────────
+    const writeForm = document.createElement('div');
+    writeForm.className = 'modal-review-write-form';
+
+    // 폼 관련 변수 — buildReviewItem에서도 접근할 수 있도록 외부 스코프에 선언
+    let selectedStar    = 0;
+    let commentInput    = null;
+    let formTitle       = null;
+    let submitBtn       = null;
+    let starBtns        = [];
+
+    function updateStarUI() {
+      starBtns.forEach((b, idx) => b.classList.toggle('filled', idx < selectedStar));
+    }
+
+    if (!currentReviewer) {
+      writeForm.innerHTML = `<p style="color:#888;font-size:13px;text-align:center;padding:12px 0;">로그인 후 리뷰를 작성할 수 있어요.</p>`;
+    } else {
+      formTitle = document.createElement('p');
+      formTitle.className = 'modal-review-form-title';
+      formTitle.textContent = '리뷰 작성';
+
+      const starSelector = document.createElement('div');
+      starSelector.className = 'modal-review-star-selector';
+      for (let i = 1; i <= 5; i++) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'modal-review-star-btn';
+        btn.innerHTML = starSVG;
+        btn.addEventListener('click', () => { selectedStar = i; updateStarUI(); });
+        starBtns.push(btn);
+        starSelector.appendChild(btn);
       }
 
-      frag.appendChild(reviewSection);
+      commentInput = document.createElement('textarea');
+      commentInput.className = 'modal-review-comment-input';
+      commentInput.placeholder = '이 레시피 어떠셨나요? (선택)';
+      commentInput.rows = 3;
+
+      submitBtn = document.createElement('button');
+      submitBtn.className = 'modal-review-submit-btn';
+      submitBtn.textContent = '등록';
+      submitBtn.addEventListener('click', async () => {
+        if (selectedStar === 0) { alert('별점을 선택해주세요!'); return; }
+        submitBtn.disabled = true;
+        try {
+          const res = await fetch(`/api/recipes/${recipe.id}/review`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: currentReviewer.id, rating: selectedStar, comment: commentInput.value.trim() }),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            reviews = data.reviews;
+            renderReviews();
+            selectedStar = 0; commentInput.value = ''; updateStarUI();
+            formTitle.textContent = '리뷰 작성';
+            submitBtn.textContent = '등록';
+          }
+        } finally { submitBtn.disabled = false; }
+      });
+
+      writeForm.append(formTitle, starSelector, commentInput, submitBtn);
+
+      // 기존 내 리뷰가 있으면 폼에 미리 채우기
+      const myReview = reviews.find(r => r.user_id === currentReviewer.id);
+      if (myReview) {
+        selectedStar = myReview.rating;
+        commentInput.value = myReview.text || '';
+        updateStarUI();
+        formTitle.textContent = '내 리뷰 수정';
+        submitBtn.textContent = '수정 완료';
+      }
     }
+
+    // ── 리뷰 아이템 빌더 ─────────────────────────────
+    function buildReviewItem(rv) {
+      const item = document.createElement('div');
+      item.className = 'modal-text-review-item';
+
+      const meta = document.createElement('div');
+      meta.className = 'modal-text-review-meta';
+
+      const userName = document.createElement('span');
+      userName.className = 'modal-review-user';
+      userName.textContent = rv.user;
+
+      const rightMeta = document.createElement('div');
+      rightMeta.className = 'modal-text-review-right-meta';
+      rightMeta.append(buildStars(rv.rating));
+      if (rv.date) {
+        const date = document.createElement('span');
+        date.className = 'modal-text-review-date';
+        date.textContent = rv.date;
+        rightMeta.appendChild(date);
+      }
+      meta.append(userName, rightMeta);
+
+      const reviewText = document.createElement('p');
+      reviewText.className = 'modal-review-text';
+      reviewText.textContent = rv.text || '';
+
+      item.append(meta, reviewText);
+
+      // 내 리뷰면 수정/삭제 버튼
+      if (currentReviewer && rv.user_id === currentReviewer.id) {
+        const actions = document.createElement('div');
+        actions.className = 'modal-review-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'modal-review-action-btn';
+        editBtn.textContent = '수정';
+        editBtn.addEventListener('click', () => {
+          selectedStar = rv.rating;
+          if (commentInput) commentInput.value = rv.text || '';
+          updateStarUI();
+          if (formTitle) formTitle.textContent = '리뷰 수정';
+          if (submitBtn) submitBtn.textContent = '수정 완료';
+          writeForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'modal-review-action-btn modal-review-action-btn--del';
+        delBtn.textContent = '삭제';
+        delBtn.addEventListener('click', async () => {
+          if (!confirm('리뷰를 삭제하겠습니까?')) return;
+          const res = await fetch(`/api/recipes/${recipe.id}/review`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: currentReviewer.id }),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            reviews = reviews.filter(r => r.user_id !== currentReviewer.id);
+            renderReviews();
+            selectedStar = 0;
+            if (commentInput) commentInput.value = '';
+            updateStarUI();
+            if (formTitle) formTitle.textContent = '리뷰 작성';
+            if (submitBtn) submitBtn.textContent = '등록';
+          }
+        });
+
+        actions.append(editBtn, delBtn);
+        item.appendChild(actions);
+      }
+
+      return item;
+    }
+
+    // ── 리뷰 목록 렌더 ───────────────────────────────
+    const reviewList = document.createElement('div');
+    reviewList.className = 'modal-text-review-list';
+
+    function renderReviews() {
+      reviewList.innerHTML = '';
+      reviewCountEl.textContent = reviews.length;
+      if (reviews.length === 0) {
+        const empty = document.createElement('p');
+        empty.style.cssText = 'color:#888;font-size:13px;text-align:center;padding:16px 0;';
+        empty.textContent = '아직 리뷰가 없어요. 첫 번째 리뷰를 남겨보세요!';
+        reviewList.appendChild(empty);
+        return;
+      }
+      reviews.forEach(rv => reviewList.appendChild(buildReviewItem(rv)));
+    }
+
+    reviewSection.append(reviewTitleRow, writeForm, reviewList);
+    renderReviews();
+    frag.appendChild(reviewSection);
 
     // 하단 여백 (네비바 가림 방지)
     const spacer = document.createElement('div');
@@ -2712,15 +2946,37 @@ const Settings = (() => {
   };
 
   const LOGIN_KEY = 'yrj_logged_in';
+  const USER_KEY  = 'yrj_user';
+
+  const GOOGLE_CLIENT_ID = '412792507622-0e2psgrf1tusb2fdbfv4cqfg5us0fabp.apps.googleusercontent.com';
 
   /** 로그인 상태 — localStorage에서 복원 */
   let isLoggedIn = Storage.get(LOGIN_KEY, false);
+  let currentUser = Storage.get(USER_KEY, null);
 
   function renderLoginSection() {
-    const loginBtn  = document.getElementById('google-login-btn');
-    const logoutBtn = document.getElementById('google-logout-btn');
-    if (loginBtn)  loginBtn.hidden  = isLoggedIn;
-    if (logoutBtn) logoutBtn.hidden = !isLoggedIn;
+    const signinContainer = document.getElementById('google-signin-container');
+    const logoutBtn       = document.getElementById('google-logout-btn');
+    if (signinContainer) signinContainer.style.display = isLoggedIn ? 'none' : 'flex';
+    if (logoutBtn)       logoutBtn.hidden = !isLoggedIn;
+
+    // 유저 정보 표시
+    const userInfo = document.getElementById('google-user-info');
+    if (userInfo) {
+      if (isLoggedIn && currentUser) {
+        const displayName = currentUser.nickname || currentUser.name || currentUser.email;
+        userInfo.hidden = false;
+        userInfo.innerHTML = `
+          <img src="${currentUser.picture || ''}" alt="프로필" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">
+          <span style="flex:1;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${displayName}</span>
+          <button id="nickname-edit-btn" style="flex-shrink:0;padding:5px 10px;font-size:12px;border:1px solid #FF6B35;border-radius:8px;background:transparent;color:#FF6B35;cursor:pointer;">닉네임 설정</button>
+        `;
+        document.getElementById('nickname-edit-btn').addEventListener('click', openNicknameModal);
+      } else {
+        userInfo.hidden = true;
+        userInfo.innerHTML = '';
+      }
+    }
 
     // 배너: hidden 속성 대신 CSS 클래스로 트랜지션 처리
     const banner = document.getElementById('login-prompt-banner');
@@ -2732,7 +2988,6 @@ const Settings = (() => {
     const btn = document.getElementById(btnId);
     if (!btn) { cb(); return; }
     btn.classList.remove('pressing');
-    // reflow로 애니메이션 재시작 보장
     void btn.offsetWidth;
     btn.classList.add('pressing');
     btn.addEventListener('animationend', () => {
@@ -2741,18 +2996,125 @@ const Settings = (() => {
     }, { once: true });
   }
 
-  function mockLogin() {
-    animatePress('google-login-btn', () => {
-      isLoggedIn = true;
-      Storage.set(LOGIN_KEY, true);
+  function handleGoogleCredential(response) {
+    fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: response.credential }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        console.log('[google login] 응답:', data);
+        if (!data || data.error || data.message) {
+          alert('로그인 실패: ' + (data?.message || data?.error || '알 수 없는 오류'));
+          return;
+        }
+        const user = data.user || data;
+        // user.id가 없을 경우 sub, userId 등 다른 필드로 대체
+        if (!user.id) user.id = user.sub || user.userId || user.googleId || user.email;
+        console.log('[google login] user.id:', user.id);
+        if (!user.name && user.nickname) user.name = user.nickname;
+        // 로그아웃 후에도 유지되는 닉네임 복원 (유저 ID 기반 별도 키)
+        const savedNickname = localStorage.getItem(`yrj_nickname_${user.id}`);
+        if (savedNickname) user.nickname = savedNickname;
+        isLoggedIn  = true;
+        currentUser = user;
+        Storage.set(LOGIN_KEY, true);
+        Storage.set(USER_KEY, user);
+        if (data.token) Storage.set('yrj_token', data.token);
+        renderLoginSection();
+        Fridge.reload();
+        Home.loadChatHistory();
+        Explore.loadLiked();
+      })
+      .catch(err => {
+        console.error('[google login]', err);
+        alert('로그인 중 오류가 발생했어요');
+      });
+  }
+
+  function initGoogleLogin() {
+    // GSI 스크립트 로드 대기 후 실제 로그인 컨테이너에 버튼 렌더링
+    function setup() {
+      if (!window.google) return;
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback:  handleGoogleCredential,
+      });
+
+      // 실제 컨테이너에 Google 공식 버튼 직접 렌더링 (숨김 없음)
+      const container = document.getElementById('google-signin-container');
+      if (container) {
+        google.accounts.id.renderButton(container, {
+          type:  'standard',
+          theme: 'outline',
+          size:  'large',
+          text:  'signin_with',
+          width: 280,
+        });
+      }
+    }
+
+    if (window.google) {
+      setup();
+    } else {
+      // async 로드 완료 대기
+      const interval = setInterval(() => {
+        if (window.google) { clearInterval(interval); setup(); }
+      }, 100);
+    }
+  }
+
+  function openNicknameModal() {
+    const current = currentUser.nickname || currentUser.name || '';
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:#1e1e1e;border-radius:16px;padding:24px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+        <h3 style="margin:0 0 16px;font-size:16px;color:#fff;">닉네임 설정</h3>
+        <input id="nickname-input" type="text" maxlength="20" value="${current}"
+          style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid #444;background:#2a2a2a;color:#fff;font-size:14px;outline:none;">
+        <p style="margin:6px 0 20px;font-size:11px;color:#888;">최대 20자</p>
+        <div style="display:flex;gap:8px;">
+          <button id="nickname-cancel-btn" style="flex:1;padding:10px;border-radius:10px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer;font-size:14px;">취소</button>
+          <button id="nickname-save-btn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#FF6B35;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">저장</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById('nickname-input').focus();
+
+    document.getElementById('nickname-cancel-btn').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    document.getElementById('nickname-save-btn').addEventListener('click', () => {
+      const newNickname = document.getElementById('nickname-input').value.trim();
+      if (!newNickname) { alert('닉네임을 입력해주세요.'); return; }
+      currentUser.nickname = newNickname;
+      Storage.set(USER_KEY, currentUser);
+      // 로그아웃 후에도 유지되도록 별도 키에 저장
+      localStorage.setItem(`yrj_nickname_${currentUser.id}`, newNickname);
+      // DB에도 저장
+      fetch('/api/user/nickname', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, nickname: newNickname }),
+      }).catch(() => {});
+      overlay.remove();
       renderLoginSection();
+      alert('닉네임이 저장됐어요!');
     });
   }
 
-  function mockLogout() {
+  function googleLogout() {
     animatePress('google-logout-btn', () => {
-      isLoggedIn = false;
+      if (window.google) google.accounts.id.disableAutoSelect();
+      isLoggedIn  = false;
+      currentUser = null;
       Storage.set(LOGIN_KEY, false);
+      Storage.set(USER_KEY, null);
+      Home.resetChatHistory();
+      Fridge.reload();
       renderLoginSection();
     });
   }
@@ -2845,8 +3207,19 @@ const Settings = (() => {
     });
 
     // 로그인 / 로그아웃
-    document.getElementById('google-login-btn')?.addEventListener('click', mockLogin);
-    document.getElementById('google-logout-btn')?.addEventListener('click', mockLogout);
+    initGoogleLogin();
+    document.getElementById('google-logout-btn')?.addEventListener('click', googleLogout);
+
+    // 게스트 로그인
+    document.getElementById('guest-login-btn')?.addEventListener('click', () => {
+      const guestUser = { id: 'guest-test-001', name: '테스트계정', nickname: '테스트계정', email: 'guest@test.com', picture: '' };
+      isLoggedIn  = true;
+      currentUser = guestUser;
+      Storage.set(LOGIN_KEY, true);
+      Storage.set(USER_KEY, guestUser);
+      renderLoginSection();
+      Fridge.reload();
+    });
 
     // 로그인 유도 배너 — 클릭 시 설정 열기
     document.getElementById('login-prompt-banner')?.addEventListener('click', openModal);
@@ -2891,8 +3264,11 @@ document.addEventListener('DOMContentLoaded', () => {
   Settings.init();
   initChips();
 
-  // DB 레시피 비동기 로드 → 완료 후 탐색 탭 재렌더
-  Api.loadRecipes().then(() => Explore.render());
+  // DB 레시피 비동기 로드 → 완료 후 탐색 탭 재렌더 + 트렌딩 로드
+  Api.loadRecipes().then(() => {
+    Explore.render();
+    Explore.loadTrending();
+  });
 
   // 냉장고 레시피 검색 버튼 클릭
   document.getElementById('fridge-recipe-search-btn')
