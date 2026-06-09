@@ -43,6 +43,39 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
   }
 });
 
+/* ── POST /api/receipt/estimate-expiry ─────────────────────
+   재료 이름 목록 → Lambda(Claude) → 유통기한 일수 추정
+───────────────────────────────────────────────────────────── */
+const CHAT_LAMBDA = 'https://4ur32pd547.execute-api.ap-northeast-2.amazonaws.com/chat';
+
+router.post('/estimate-expiry', async (req, res) => {
+  const { ingredients } = req.body;
+  if (!Array.isArray(ingredients) || ingredients.length === 0)
+    return res.status(400).json({ error: '재료 목록이 없습니다.' });
+
+  const prompt = `다음 식재료들의 냉장 보관 기준 평균 유통기한을 일(day) 단위로 추정해줘.
+반드시 JSON 형식으로만 응답해. 다른 텍스트는 포함하지 마.
+형식: {"재료명": 일수}
+상온 보관 식품(라면, 통조림 등)은 실제 유통기한 기준으로 추정해줘.
+
+재료: ${ingredients.join(', ')}`;
+
+  try {
+    const lambdaRes = await fetch(CHAT_LAMBDA, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: prompt }),
+    });
+    const data = await lambdaRes.json();
+    const jsonMatch = (data.reply || '').match(/\{[\s\S]*\}/);
+    const expiry = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+    res.json({ expiry });
+  } catch (err) {
+    console.error('[estimate-expiry] 오류:', err.message);
+    res.status(500).json({ error: '유통기한 추정 실패', expiry: {} });
+  }
+});
+
 /* ── POST /api/receipt/save ────────────────────────────────
    식재료 목록 → RDS ingredient 테이블 저장
 ───────────────────────────────────────────────────────────── */
@@ -63,13 +96,14 @@ router.post('/save', async (req, res) => {
       const name        = (item.name || '').trim();
       const count       = Math.max(1, parseInt(item.count) || 1);
       const category_id = VALID_CATEGORIES.has(item.category_id) ? item.category_id : '채소/과일';
+      const expiry_date = item.expiryDate || null; // YYYY-MM-DD or null
       if (!name) continue;
 
       await db.query(
         `INSERT INTO ingredient
-           (user_id, category_id, name, count, expiry_status, created_at)
-         VALUES (?, ?, ?, ?, 'ok', ?)`,
-        [user_id, category_id, name, count, now]
+           (user_id, category_id, name, count, expiry_date, expiry_status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'ok', ?)`,
+        [user_id, category_id, name, count, expiry_date, now]
       );
       saved++;
     }

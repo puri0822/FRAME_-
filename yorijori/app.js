@@ -945,11 +945,35 @@ const Fridge = (() => {
 
       function openReceiptModal(ingredients) {
         receiptIngredients = ingredients.map(function(i) {
-          return { name: i.name, count: i.count || 1, category_id: i.category_id || '채소/과일', removed: false };
+          return { name: i.name, count: i.count || 1, category_id: i.category_id || '채소/과일', removed: false, expiryDate: '', expiryAI: false };
         });
         categoryPickerIdx = -1;
         renderReceiptList();
         document.getElementById('receipt-modal-overlay').style.display = 'flex';
+
+        /* ── AI 유통기한 추정 (비동기) ── */
+        fetch('/api/receipt/estimate-expiry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ingredients: receiptIngredients.map(function(i){ return i.name; }) })
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(data) {
+          if (!data.expiry) return;
+          var today = new Date();
+          receiptIngredients.forEach(function(item) {
+            var days = data.expiry[item.name];
+            if (days && !item.removed) {
+              var d = new Date(today);
+              d.setDate(d.getDate() + parseInt(days));
+              item.expiryDate = d.toISOString().split('T')[0];
+              item.expiryDays = parseInt(days);
+              item.expiryAI   = true;
+            }
+          });
+          renderReceiptList();
+        })
+        .catch(function(){});  /* 실패해도 모달은 정상 사용 */
       }
 
       function renderReceiptList() {
@@ -984,6 +1008,21 @@ const Fridge = (() => {
               '<span data-idx="' + idx + '" data-role="count" style="min-width:22px;text-align:center;font-size:14px;font-weight:700;">' + item.count + '</span>' +
               '<button data-idx="' + idx + '" data-action="plus" style="width:28px;height:28px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:16px;cursor:pointer;line-height:1;">+</button>' +
               '<button data-idx="' + idx + '" data-action="remove" style="width:28px;height:28px;border:none;border-radius:6px;background:#ffe5e5;color:#e53935;font-size:14px;cursor:pointer;">✕</button>';
+
+            /* ── 유통기한 행 ── */
+            const expiryRow = document.createElement('div');
+            expiryRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 12px 8px;';
+            expiryRow.innerHTML =
+              '<span style="font-size:11px;color:#aaa;">📅 유통기한</span>' +
+              (item.expiryAI ? '<span style="font-size:10px;color:#FF6B35;background:#fff3ee;padding:1px 5px;border-radius:4px;">AI추정</span>' : '') +
+              '<input type="date" data-idx="' + idx + '" data-role="expiry-input"' +
+              ' value="' + (item.expiryDate || '') + '"' +
+              ' style="flex:1;font-size:12px;border:1px solid #e0e0e0;border-radius:6px;padding:3px 6px;color:#444;background:#fff;outline:none;">' +
+              (item.expiryDays ? '<span style="font-size:11px;color:#888;">D+' + item.expiryDays + '</span>' : '');
+            wrapper.appendChild(row);
+            wrapper.appendChild(expiryRow);
+            list.appendChild(wrapper);
+            return;
 
             /* ── 카테고리 피커 ── */
             if (catActive) {
@@ -1042,9 +1081,23 @@ const Fridge = (() => {
           });
         });
 
-        /* 편집 중인 input에 자동 포커스 */
+        /* 편집 중인 name-input에 자동 포커스 */
         const activeInput = list.querySelector('input[data-role="name-input"]');
         if (activeInput) { activeInput.focus(); activeInput.select(); }
+
+        /* 유통기한 date input 변경 감지 */
+        list.querySelectorAll('input[data-role="expiry-input"]').forEach(function(inp) {
+          inp.addEventListener('change', function() {
+            const idx = parseInt(this.dataset.idx);
+            receiptIngredients[idx].expiryDate = this.value;
+            receiptIngredients[idx].expiryAI   = false; /* 직접 수정 시 AI 표시 제거 */
+            receiptIngredients[idx].expiryDays  = null;
+            /* 재렌더 없이 badge만 제거 */
+            var badge = this.parentElement.querySelector('span[style*="AI추정"]') ||
+                        this.parentElement.querySelector('span[style*="fff3ee"]');
+            if (badge) badge.remove();
+          });
+        });
 
         const remaining = receiptIngredients.filter(function(i){ return !i.removed; }).length;
         document.getElementById('receipt-modal-save').textContent = '냉장고에 저장 (' + remaining + '개)';
