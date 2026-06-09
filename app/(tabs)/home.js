@@ -191,6 +191,35 @@ function SendIcon() {
 
 function SettingsModal({ visible, onClose }) {
   const { user, loginWithGoogle, logout } = useAuth();
+  const [nickname,   setNickname]   = useState("");
+  const [nickEdit,   setNickEdit]   = useState(false);
+  const [nickInput,  setNickInput]  = useState("");
+  const [nickSaving, setNickSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user?.userId || !visible) return;
+    setNickEdit(false);
+    fetch(`${EC2_ENDPOINTS.userNickname}/${user.userId}/nickname`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { setNickname(data?.nickname || user?.name || ""); })
+      .catch(() => { setNickname(user?.name || ""); });
+  }, [user?.userId, visible]);
+
+  async function saveNickname() {
+    const trimmed = nickInput.trim();
+    if (!trimmed || !user?.userId) return;
+    setNickSaving(true);
+    try {
+      const res = await fetch(`${EC2_ENDPOINTS.userNickname}/${user.userId}/nickname`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nickname: trimmed, email: user.email || "" }),
+      });
+      if (res.ok) { setNickname(trimmed); setNickEdit(false); }
+    } catch {} finally {
+      setNickSaving(false);
+    }
+  }
 
   async function handleLogout() {
     await logout();
@@ -212,6 +241,39 @@ function SettingsModal({ visible, onClose }) {
               <View style={st.authSection}>
                 <Text style={st.authName}>{user.name || user.email}</Text>
                 <Text style={st.authEmail}>{user.email}</Text>
+
+                <View style={st.nickSection}>
+                  <Text style={st.settingsSectionTitle}>닉네임 <Text style={{ fontWeight: "400", color: C.textMuted }}>(리뷰에 표시)</Text></Text>
+                  {nickEdit ? (
+                    <View style={st.nickEditRow}>
+                      <TextInput
+                        style={st.nickInput}
+                        value={nickInput}
+                        onChangeText={setNickInput}
+                        placeholder="닉네임 입력"
+                        placeholderTextColor={C.textMuted}
+                        maxLength={20}
+                        autoFocus
+                        returnKeyType="done"
+                        onSubmitEditing={saveNickname}
+                      />
+                      <TouchableOpacity style={st.nickSaveBtn} onPress={saveNickname} disabled={nickSaving}>
+                        <Text style={st.nickSaveBtnText}>{nickSaving ? "···" : "저장"}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => setNickEdit(false)}>
+                        <Text style={st.nickCancelText}>취소</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={st.nickRow}>
+                      <Text style={st.nickValue}>{nickname || "설정되지 않음"}</Text>
+                      <TouchableOpacity onPress={() => { setNickInput(nickname); setNickEdit(true); }}>
+                        <Text style={st.nickEditText}>편집</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
                 <TouchableOpacity style={st.logoutBtn} onPress={handleLogout}>
                   <Text style={st.logoutBtnText}>로그아웃</Text>
                 </TouchableOpacity>

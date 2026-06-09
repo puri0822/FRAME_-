@@ -97,7 +97,21 @@ export default StyleSheet.create({
   ingrChipText: { fontSize: 12, fontWeight: "700", color: C.primary },
   authSection: { marginBottom: 20 },
   authName: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 3 },
-  authEmail: { fontSize: 13, color: C.textSub, marginBottom: 14 },
+  authEmail: { fontSize: 13, color: C.textSub, marginBottom: 16 },
+  nickSection: { marginBottom: 16 },
+  nickRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 6 },
+  nickValue: { fontSize: 14, color: C.text, fontWeight: "500" },
+  nickEditText: { fontSize: 13, color: C.primary, fontWeight: "600" },
+  nickEditRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
+  nickInput: {
+    flex: 1, height: 38, borderRadius: 8, borderWidth: 1.5, borderColor: C.border,
+    paddingHorizontal: 12, fontSize: 14, color: C.text, backgroundColor: C.bg,
+  },
+  nickSaveBtn: {
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 8, backgroundColor: C.primary,
+  },
+  nickSaveBtnText: { fontSize: 13, fontWeight: "700", color: "#fff" },
+  nickCancelText: { fontSize: 13, color: C.textSub, paddingVertical: 9 },
   logoutBtn: {
     borderWidth: 1, borderColor: C.border, borderRadius: 10,
     paddingVertical: 11, alignItems: "center",

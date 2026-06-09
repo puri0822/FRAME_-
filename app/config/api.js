@@ -14,6 +14,7 @@ export const EC2_ENDPOINTS = {
   youtube:    `${EC2_BASE_URL}/api/youtube/search`,
   receipt:    `${EC2_BASE_URL}/api/receipt`,
   chat:       `${EC2_BASE_URL}/api/chat`,
-  fridge:      `${EC2_BASE_URL}/api/fridge`,
-  chatHistory: `${EC2_BASE_URL}/api/chat/history`,
+  fridge:       `${EC2_BASE_URL}/api/fridge`,
+  chatHistory:  `${EC2_BASE_URL}/api/chat/history`,
+  userNickname: `${EC2_BASE_URL}/api/user`,
 };

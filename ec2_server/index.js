@@ -155,6 +155,34 @@ app.post('/api/scan', express.raw({ type: 'audio/*', limit: '10mb' }), async (re
   }
 });
 
+// 닉네임 GET
+app.get('/api/user/:userId/nickname', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT nickname FROM `user` WHERE id = ?', [req.params.userId]);
+    res.json({ nickname: rows.length ? rows[0].nickname : null });
+  } catch (err) {
+    console.error('[nickname GET]', err);
+    res.status(500).json({ error: '닉네임 조회 실패' });
+  }
+});
+
+// 닉네임 PUT
+app.put('/api/user/:userId/nickname', async (req, res) => {
+  try {
+    const { nickname, email } = req.body;
+    if (!nickname?.trim()) return res.status(400).json({ error: '닉네임을 입력해주세요' });
+    await db.query(
+      `INSERT INTO \`user\` (id, nickname, email, provider) VALUES (?, ?, ?, 'google_mobile')
+       ON DUPLICATE KEY UPDATE nickname = VALUES(nickname)`,
+      [req.params.userId, nickname.trim(), email || '']
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[nickname PUT]', err);
+    res.status(500).json({ error: '닉네임 저장 실패' });
+  }
+});
+
 // 채팅 히스토리 GET — 최근 20개 반환
 app.get('/api/chat/history/:userId', async (req, res) => {
   try {
