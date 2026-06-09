@@ -191,29 +191,30 @@ function SendIcon() {
 
 function SettingsModal({ visible, onClose }) {
   const { user, loginWithGoogle, logout } = useAuth();
+  const uid = user?.userId ?? user?.id;
   const [nickname,   setNickname]   = useState("");
   const [nickEdit,   setNickEdit]   = useState(false);
   const [nickInput,  setNickInput]  = useState("");
   const [nickSaving, setNickSaving] = useState(false);
 
   useEffect(() => {
-    if (!user?.userId || !visible) return;
+    if (!uid || !visible) return;
     setNickEdit(false);
-    fetch(`${EC2_ENDPOINTS.userNickname}/${user.userId}/nickname`)
+    fetch(`${EC2_ENDPOINTS.userNickname}/${uid}/nickname`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { setNickname(data?.nickname || user?.name || ""); })
       .catch(() => { setNickname(user?.name || ""); });
-  }, [user?.userId, visible]);
+  }, [uid, visible]);
 
   async function saveNickname() {
     const trimmed = nickInput.trim();
-    if (!trimmed || !user?.userId) return;
+    if (!trimmed || !uid) return;
     setNickSaving(true);
     try {
-      const res = await fetch(`${EC2_ENDPOINTS.userNickname}/${user.userId}/nickname`, {
+      const res = await fetch(`${EC2_ENDPOINTS.userNickname}/${uid}/nickname`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname: trimmed, email: user.email || "" }),
+        body: JSON.stringify({ nickname: trimmed, email: user?.email || "" }),
       });
       if (res.ok) { setNickname(trimmed); setNickEdit(false); }
     } catch {} finally {
@@ -228,6 +229,7 @@ function SettingsModal({ visible, onClose }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
       <Pressable style={st.modalOverlay} onPress={onClose}>
         <View style={st.settingsSheet}>
           <View style={st.settingsHeader}>
@@ -299,6 +301,7 @@ function SettingsModal({ visible, onClose }) {
           </View>
         </View>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -395,7 +398,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={st.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView style={st.container} behavior="padding">
       <View style={st.header}>
         <View>
           <Text style={st.appTitle}>요리조리 🍳</Text>

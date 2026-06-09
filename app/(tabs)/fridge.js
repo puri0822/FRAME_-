@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -355,6 +357,7 @@ function AddIngredientModal({ visible, onClose, onAdd, defaultCategory }) {
   return (
     <>
       <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <Pressable style={st.overlay} onPress={onClose}>
           <Pressable style={[st.sheet, { maxHeight: "88%" }]} onPress={() => {}}>
             {/* 헤더 */}
@@ -459,6 +462,7 @@ function AddIngredientModal({ visible, onClose, onAdd, defaultCategory }) {
             )}
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       <CatalogDetailSheet
@@ -489,6 +493,7 @@ function EditBottomSheet({ item, onClose, onSave, onDelete }) {
 
   return (
     <Modal visible={!!item} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
       <Pressable style={st.editOverlay} onPress={onClose}>
         <Pressable style={st.editSheet} onPress={() => {}}>
           <View style={st.editSheetHandle} />
@@ -541,6 +546,7 @@ function EditBottomSheet({ item, onClose, onSave, onDelete }) {
           </View>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
