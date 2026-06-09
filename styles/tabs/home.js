@@ -31,7 +31,12 @@ export default StyleSheet.create({
   bubbleAi: { backgroundColor: C.bg, borderBottomLeftRadius: 5 },
   bubbleUser: { backgroundColor: C.primary, borderTopRightRadius: 5 },
   bubbleText: { fontSize: 13, lineHeight: 20, color: C.text },
-  quickChips: { maxHeight: 44 },
+  quickChipsRow: { flexDirection: "row", alignItems: "center", maxHeight: 44 },
+  quickChips: { flex: 1 },
+  clearHistoryBtn: {
+    paddingHorizontal: 10, paddingVertical: 8,
+    justifyContent: "center", alignItems: "center",
+  },
   quickChip: {
     paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999,
     borderWidth: 1, borderColor: "rgba(255,107,53,0.22)",

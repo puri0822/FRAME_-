@@ -147,6 +147,9 @@ function RecipeModal({ recipeId, onClose }) {
   );
 }
 
+const INITIAL_MSG  = { id: 0, role: "ai", text: "안녕하세요! 저는 요리조리 AI예요 🍳\n어떤 요리가 궁금하신가요?" };
+const MAX_HISTORY  = 20;
+
 const RECOMMEND_POOL = [
   "오늘 저녁 한식 레시피 추천해줘",
   "간단하게 만들 수 있는 레시피 추천해줘",
@@ -165,6 +168,15 @@ function SettingsIcon() {
     <Svg viewBox="0 0 24 24" width={22} height={22} fill="none" stroke={C.textSub} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <Path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
       <Path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </Svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <Svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke={C.textMuted} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Line x1={3} y1={6} x2={21} y2={6} />
+      <Path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />
     </Svg>
   );
 }
@@ -230,15 +242,58 @@ function SettingsModal({ visible, onClose }) {
 }
 
 export default function HomeScreen() {
-  const [messages, setMessages] = useState([
-    { id: 0, role: "ai", text: "안녕하세요! 저는 요리조리 AI예요 🍳\n어떤 요리가 궁금하신가요?" },
-  ]);
+  const { user } = useAuth();
+  const [messages, setMessages] = useState([INITIAL_MSG]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [settingsOpen, setSettingsOpen]     = useState(false);
   const [ingrPickerOpen, setIngrPickerOpen] = useState(false);
   const [selectedRecipeId, setSelectedRecipeId] = useState(null);
-  const scrollRef = useRef(null);
+  const scrollRef          = useRef(null);
+  const prevUserId         = useRef(null);
+  const historyJustLoaded  = useRef(false);
+
+  // 로그인/로그아웃 시 히스토리 처리
+  useEffect(() => {
+    if (!user?.userId) {
+      prevUserId.current = null;
+      setMessages([INITIAL_MSG]);
+      return;
+    }
+    if (user.userId === prevUserId.current) return;
+    prevUserId.current = user.userId;
+    fetch(`${EC2_ENDPOINTS.chatHistory}/${user.userId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(history => {
+        if (Array.isArray(history) && history.length > 0) {
+          historyJustLoaded.current = true;
+          setMessages([INITIAL_MSG, ...history]);
+        }
+      }).catch(() => {});
+  }, [user?.userId]);
+
+  // 메시지 변경 시 서버에 저장
+  useEffect(() => {
+    if (historyJustLoaded.current) { historyJustLoaded.current = false; return; }
+    if (!user?.userId || messages.length <= 1) return;
+    const toSave = messages.slice(1).slice(-MAX_HISTORY);
+    fetch(`${EC2_ENDPOINTS.chatHistory}/${user.userId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: toSave }),
+    }).catch(() => {});
+  }, [messages]);
+
+  function clearHistory() {
+    setMessages([INITIAL_MSG]);
+    if (user?.userId) {
+      fetch(`${EC2_ENDPOINTS.chatHistory}/${user.userId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [] }),
+      }).catch(() => {});
+    }
+  }
 
   function getDisplayIngredients() {
     const items = getIngredients();
@@ -346,24 +401,29 @@ export default function HomeScreen() {
             </ScrollView>
           </View>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.quickChips} contentContainerStyle={{ gap: 8, paddingHorizontal: 14, paddingVertical: 6 }}>
-            {QUICK_CHIPS.map((chip) => (
-              <TouchableOpacity
-                key={chip}
-                style={st.quickChip}
-                onPress={() => {
-                  if (chip === "추천 레시피 🍳") {
-                    const random = RECOMMEND_POOL[Math.floor(Math.random() * RECOMMEND_POOL.length)];
-                    sendMessage(random);
-                  } else {
-                    sendMessage(chip);
-                  }
-                }}
-              >
-                <Text style={st.quickChipText}>{chip}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <View style={st.quickChipsRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[st.quickChips, { flex: 1 }]} contentContainerStyle={{ gap: 8, paddingHorizontal: 14, paddingVertical: 6 }}>
+              {QUICK_CHIPS.map((chip) => (
+                <TouchableOpacity
+                  key={chip}
+                  style={st.quickChip}
+                  onPress={() => {
+                    if (chip === "추천 레시피 🍳") {
+                      const random = RECOMMEND_POOL[Math.floor(Math.random() * RECOMMEND_POOL.length)];
+                      sendMessage(random);
+                    } else {
+                      sendMessage(chip);
+                    }
+                  }}
+                >
+                  <Text style={st.quickChipText}>{chip}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={st.clearHistoryBtn} onPress={clearHistory}>
+              <TrashIcon />
+            </TouchableOpacity>
+          </View>
         )}
 
         <View style={st.inputBar}>
