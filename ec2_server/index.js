@@ -155,30 +155,31 @@ app.post('/api/scan', express.raw({ type: 'audio/*', limit: '10mb' }), async (re
   }
 });
 
-// 채팅 히스토리 GET
+// 채팅 히스토리 GET — 최근 20개 반환
 app.get('/api/chat/history/:userId', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT messages FROM user_chat_history WHERE user_id = ?', [req.params.userId]);
-    if (!rows.length) return res.json([]);
-    const raw  = rows[0].messages;
-    const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    res.json(Array.isArray(data) ? data : []);
+    const [rows] = await db.query(
+      'SELECT id, role, message FROM chat_history WHERE user_id = ? ORDER BY created_at ASC',
+      [req.params.userId]
+    );
+    const msgs = rows.slice(-20).map(r => ({ id: r.id, role: r.role, text: r.message }));
+    res.json(msgs);
   } catch (err) {
     console.error('[chat history GET]', err);
     res.status(500).json({ error: '히스토리 조회 실패' });
   }
 });
 
-// 채팅 히스토리 PUT
+// 채팅 히스토리 PUT — 기존 삭제 후 재삽입
 app.put('/api/chat/history/:userId', async (req, res) => {
   try {
     const { messages } = req.body;
     if (!Array.isArray(messages)) return res.status(400).json({ error: '잘못된 형식' });
-    await db.query(
-      `INSERT INTO user_chat_history (user_id, messages) VALUES (?, ?)
-       ON DUPLICATE KEY UPDATE messages = VALUES(messages), updated_at = NOW()`,
-      [req.params.userId, JSON.stringify(messages)]
-    );
+    await db.query('DELETE FROM chat_history WHERE user_id = ?', [req.params.userId]);
+    if (messages.length > 0) {
+      const values = messages.map(m => [req.params.userId, m.role === 'user' ? 'user' : 'ai', m.text || '']);
+      await db.query('INSERT INTO chat_history (user_id, role, message) VALUES ?', [values]);
+    }
     res.json({ ok: true });
   } catch (err) {
     console.error('[chat history PUT]', err);
@@ -202,14 +203,6 @@ app.listen(PORT, () => {
       updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `).catch(e => console.error('[migration] user_fridge 생성 실패:', e.message));
-
-  db.query(`
-    CREATE TABLE IF NOT EXISTS user_chat_history (
-      user_id  VARCHAR(255) PRIMARY KEY,
-      messages LONGTEXT     NOT NULL DEFAULT '[]',
-      updated_at TIMESTAMP  DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `).catch(e => console.error('[migration] user_chat_history 생성 실패:', e.message));
 
   // 서버 시작 후 초기 동기화
   syncRecipes().catch(e => console.error('[sync] 초기 동기화 실패:', e.message));
