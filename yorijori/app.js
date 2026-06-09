@@ -48,7 +48,8 @@ const Api = (() => {
   /** DB 레시피 전체 로드 */
   async function loadRecipes() {
     try {
-      const dbRecipes = await get('/recipes');
+      const data = await get('/recipes?limit=2000');
+      const dbRecipes = (data && data.recipes) ? data.recipes : (Array.isArray(data) ? data : []);
       RECIPES.length = 0;
       dbRecipes.forEach(r => RECIPES.push(r));
     } catch (e) {
