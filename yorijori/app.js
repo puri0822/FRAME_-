@@ -939,11 +939,14 @@ const Fridge = (() => {
     /* ── 영수증 촬영 ── */
     (function() {
       let receiptIngredients = [];
+      let categoryPickerIdx = -1;
+      const CATEGORIES = ['채소/과일', '육류/수산', '유제품', '가공/편의점', '양념'];
 
       function openReceiptModal(ingredients) {
         receiptIngredients = ingredients.map(function(i) {
           return { name: i.name, count: i.count || 1, category_id: i.category_id || '채소/과일', removed: false };
         });
+        categoryPickerIdx = -1;
         renderReceiptList();
         document.getElementById('receipt-modal-overlay').style.display = 'flex';
       }
@@ -953,11 +956,16 @@ const Fridge = (() => {
         list.innerHTML = '';
         receiptIngredients.forEach(function(item, idx) {
           if (item.removed) return;
+
+          /* 래퍼 (행 + 카테고리 피커를 세로로 묶음) */
+          const wrapper = document.createElement('div');
+          wrapper.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+
           const row = document.createElement('div');
           row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:10px 12px;background:#f9f9f9;border-radius:10px;';
 
           if (item.editing) {
-            /* ── 편집 모드 ── */
+            /* ── 이름 편집 모드 ── */
             row.innerHTML =
               '<input data-idx="' + idx + '" data-role="name-input" type="text" value="' + item.name.replace(/"/g, '&quot;') + '"' +
               ' style="flex:1;font-size:14px;font-weight:600;border:1.5px solid #FF6B35;border-radius:6px;padding:4px 8px;outline:none;min-width:0;">' +
@@ -965,17 +973,44 @@ const Fridge = (() => {
               '<button data-idx="' + idx + '" data-action="remove" style="width:28px;height:28px;border:none;border-radius:6px;background:#ffe5e5;color:#e53935;font-size:14px;cursor:pointer;">✕</button>';
           } else {
             /* ── 일반 모드 ── */
+            const catActive = categoryPickerIdx === idx;
             row.innerHTML =
               '<span style="flex:1;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + item.name + '</span>' +
-              '<span style="font-size:11px;color:#888;background:#eee;padding:2px 6px;border-radius:6px;white-space:nowrap;">' + item.category_id + '</span>' +
+              '<button data-idx="' + idx + '" data-action="toggle-category" title="카테고리 변경"' +
+              ' style="font-size:11px;color:' + (catActive ? '#FF6B35' : '#888') + ';background:' + (catActive ? '#fff3ee' : '#eee') + ';border:1.5px solid ' + (catActive ? '#FF6B35' : 'transparent') + ';padding:2px 7px;border-radius:6px;cursor:pointer;white-space:nowrap;">' + item.category_id + '</button>' +
               '<button data-idx="' + idx + '" data-action="edit" title="이름 편집" style="width:28px;height:28px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;">✏️</button>' +
               '<button data-idx="' + idx + '" data-action="minus" style="width:28px;height:28px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:16px;cursor:pointer;line-height:1;">-</button>' +
               '<span data-idx="' + idx + '" data-role="count" style="min-width:22px;text-align:center;font-size:14px;font-weight:700;">' + item.count + '</span>' +
               '<button data-idx="' + idx + '" data-action="plus" style="width:28px;height:28px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:16px;cursor:pointer;line-height:1;">+</button>' +
               '<button data-idx="' + idx + '" data-action="remove" style="width:28px;height:28px;border:none;border-radius:6px;background:#ffe5e5;color:#e53935;font-size:14px;cursor:pointer;">✕</button>';
+
+            /* ── 카테고리 피커 ── */
+            if (catActive) {
+              const picker = document.createElement('div');
+              picker.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;padding:6px 12px 8px;';
+              CATEGORIES.forEach(function(cat) {
+                const chip = document.createElement('button');
+                chip.dataset.action = 'set-category';
+                chip.dataset.idx = String(idx);
+                chip.dataset.cat = cat;
+                chip.textContent = cat;
+                const isSel = item.category_id === cat;
+                chip.style.cssText =
+                  'padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;' +
+                  'border:1.5px solid ' + (isSel ? '#FF6B35' : '#ddd') + ';' +
+                  'background:' + (isSel ? '#FF6B35' : '#fff') + ';' +
+                  'color:' + (isSel ? '#fff' : '#555') + ';font-weight:' + (isSel ? '700' : '400') + ';';
+                picker.appendChild(chip);
+              });
+              wrapper.appendChild(row);
+              wrapper.appendChild(picker);
+              list.appendChild(wrapper);
+              return; /* 이미 append 했으므로 아래 append 건너뜀 */
+            }
           }
 
-          list.appendChild(row);
+          wrapper.appendChild(row);
+          list.appendChild(wrapper);
         });
 
         list.querySelectorAll('button[data-action]').forEach(function(btn) {
@@ -984,16 +1019,23 @@ const Fridge = (() => {
             const action = this.dataset.action;
             if (action === 'remove') {
               receiptIngredients[idx].removed = true;
+              if (categoryPickerIdx === idx) categoryPickerIdx = -1;
             } else if (action === 'plus') {
               receiptIngredients[idx].count++;
             } else if (action === 'minus') {
               if (receiptIngredients[idx].count > 1) receiptIngredients[idx].count--;
             } else if (action === 'edit') {
               receiptIngredients[idx].editing = true;
+              categoryPickerIdx = -1;
             } else if (action === 'confirm-edit') {
               const inp = list.querySelector('input[data-role="name-input"][data-idx="' + idx + '"]');
               if (inp && inp.value.trim()) receiptIngredients[idx].name = inp.value.trim();
               receiptIngredients[idx].editing = false;
+            } else if (action === 'toggle-category') {
+              categoryPickerIdx = (categoryPickerIdx === idx) ? -1 : idx;
+            } else if (action === 'set-category') {
+              receiptIngredients[idx].category_id = this.dataset.cat;
+              categoryPickerIdx = -1;
             }
             renderReceiptList();
           });
@@ -1011,6 +1053,7 @@ const Fridge = (() => {
 
       /* ── 재료 직접 추가 버튼 ── */
       document.getElementById('receipt-add-btn')?.addEventListener('click', function() {
+        categoryPickerIdx = -1;
         receiptIngredients.push({ name: '새 재료', count: 1, category_id: '채소/과일', removed: false, editing: true });
         renderReceiptList();
         const list = document.getElementById('receipt-ingredient-list');
