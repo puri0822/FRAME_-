@@ -1,6 +1,17 @@
 # ERD (Entity Relationship Diagram)
 
-## 다이어그램
+## 데이터베이스 구분
+
+| DB | 용도 | 테이블 |
+|---|---|---|
+| **RDS (MySQL 8.0)** | 관계형 데이터, 트랜잭션 필요 | user, ingredient, recipe 관련 10개 |
+| **DynamoDB** | 비정형 로그성 데이터, 고속 조회 | chat_history, receipt_scan_log |
+
+---
+
+## RDS (MySQL 8.0) — 기존 그대로
+
+### 다이어그램
 
 ```
 ┌─────────────────────┐
@@ -57,9 +68,9 @@
                   └──────────────────┘  └──────────────┘
 ```
 
-## 테이블 상세
+### 테이블 상세
 
-### user
+#### user
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | VARCHAR(36) PK | UUID 자동 생성 |
@@ -67,7 +78,7 @@
 | email | VARCHAR(255) UNIQUE | 이메일 |
 | provider | VARCHAR(20) | `google` \| `local` |
 
-### ingredient
+#### ingredient
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | INT PK AUTO_INCREMENT | |
@@ -80,20 +91,20 @@
 | expiry_status | VARCHAR(10) | `ok` \| `warning` \| `expired` |
 | created_at | DATETIME | 등록일 |
 
-### ingredient_category
+#### ingredient_category
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | VARCHAR(50) PK | 카테고리명 (예: 채소/과일) |
 | image_url | VARCHAR(500) | 카테고리 이미지 |
 | sort_order | INT | 정렬 순서 |
 
-### ingredient_image
+#### ingredient_image
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | keyword | VARCHAR(100) PK | 재료 키워드 |
 | image_url | VARCHAR(500) | 재료 이미지 URL |
 
-### recipe
+#### recipe
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | INT PK AUTO_INCREMENT | |
@@ -106,14 +117,14 @@
 | youtube_url | VARCHAR(500) | 유튜브 URL |
 | is_published | BOOLEAN | 공개 여부 |
 
-### recipe_category
+#### recipe_category
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | VARCHAR(50) PK | 카테고리명 |
 | image_url | VARCHAR(500) | 카테고리 이미지 |
 | sort_order | INT | 정렬 순서 |
 
-### recipe_ingredient
+#### recipe_ingredient
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | INT PK AUTO_INCREMENT | |
@@ -121,7 +132,7 @@
 | ingredient_name | VARCHAR(100) | 재료명 |
 | is_key | BOOLEAN | 핵심 재료 여부 |
 
-### recipe_step
+#### recipe_step
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | INT PK AUTO_INCREMENT | |
@@ -129,7 +140,7 @@
 | step_order | INT | 조리 순서 |
 | description | TEXT | 단계 설명 |
 
-### recipe_review
+#### recipe_review
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | INT PK AUTO_INCREMENT | |
@@ -140,14 +151,14 @@
 | comment | TEXT | 리뷰 내용 |
 | created_at | DATETIME | 작성일 |
 
-### favorite
+#### favorite
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | INT PK AUTO_INCREMENT | |
 | user_id | VARCHAR(36) FK | → user.id |
 | recipe_id | INT FK | → recipe.id |
 
-## 관계 요약
+### 관계 요약
 
 | 관계 | 설명 |
 |---|---|
@@ -161,3 +172,76 @@
 | recipe_category : recipe | 1:N (카테고리별 레시피) |
 | ingredient_category : ingredient | 1:N (카테고리별 재료) |
 | ingredient_image : ingredient | 1:N (재료 이미지) |
+
+---
+
+## DynamoDB
+
+### 테이블 목록
+
+| 테이블명 | 파티션 키 | 정렬 키 | 용도 |
+|---|---|---|---|
+| `chat_history` | `user_id` (S) | `created_at` (S) | AI 챗봇 대화 기록 |
+| `receipt_scan_log` | `user_id` (S) | `scanned_at` (S) | 영수증 OCR 스캔 이력 |
+
+---
+
+### chat_history
+
+- **파티션 키**: `user_id` (String)
+- **정렬 키**: `created_at` (String, ISO 8601)
+- **용도**: 사용자별 AI 챗봇 대화 기록 저장 및 시간순 조회
+
+```json
+{
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "created_at": "2025-06-09T12:34:56.789Z",
+  "role": "user",
+  "message": "냉장고에 당근 2개 넣어줘",
+  "intent": "FRIDGE_SAVE",
+  "ttl": 1780000000
+}
+```
+
+| 속성 | 타입 | 설명 |
+|---|---|---|
+| user_id | String (PK) | 사용자 UUID |
+| created_at | String (SK) | ISO 8601 타임스탬프 |
+| role | String | `user` \| `assistant` |
+| message | String | 메시지 내용 |
+| intent | String | `FRIDGE_SAVE` \| `RECIPE_SEARCH` \| `CHAT` (assistant 응답 시) |
+| ttl | Number | TTL — 자동 만료 Unix timestamp (선택) |
+
+---
+
+### receipt_scan_log
+
+- **파티션 키**: `user_id` (String)
+- **정렬 키**: `scanned_at` (String, ISO 8601)
+- **용도**: 영수증 OCR 스캔 결과 및 이력 저장
+
+```json
+{
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "scanned_at": "2025-06-09T12:00:00.000Z",
+  "scan_id": "scan_abc123",
+  "status": "success",
+  "raw_text": "당근 2개\n양파 1개\n돼지고기 500g",
+  "parsed_items": [
+    { "name": "당근",   "count": 2, "category": "채소/과일" },
+    { "name": "양파",   "count": 1, "category": "채소/과일" },
+    { "name": "돼지고기", "count": 1, "category": "육류/수산" }
+  ],
+  "saved_count": 3
+}
+```
+
+| 속성 | 타입 | 설명 |
+|---|---|---|
+| user_id | String (PK) | 사용자 UUID |
+| scanned_at | String (SK) | ISO 8601 타임스탬프 |
+| scan_id | String | 스캔 고유 ID |
+| status | String | `success` \| `failed` |
+| raw_text | String | OCR 원문 |
+| parsed_items | List | 파싱된 재료 목록 |
+| saved_count | Number | 냉장고에 저장된 재료 수 |
