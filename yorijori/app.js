@@ -1188,7 +1188,7 @@ const Fridge = (() => {
             document.getElementById('receipt-modal-overlay').style.display = 'none';
             showToast('✓ ' + data.saved + '개 재료가 저장됐어요');
             toSave.forEach(function(item) {
-              Fridge.add(item.name, item.category_id, '', item.count || 1);
+              Fridge.add(item.name, item.category_id, item.expiryDate || '', item.count || 1);
             });
           } else {
             showToast(data.error || '저장 실패');
