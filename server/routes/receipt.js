@@ -3,7 +3,8 @@ const router  = express.Router();
 const multer  = require('multer');
 const db      = require('../db');
 
-const LAMBDA_URL = 'https://4ur32pd547.execute-api.ap-northeast-2.amazonaws.com/receipt';
+const LAMBDA_URL   = 'https://4ur32pd547.execute-api.ap-northeast-2.amazonaws.com/receipt';
+const CHAT_LAMBDA  = 'https://4ur32pd547.execute-api.ap-northeast-2.amazonaws.com/chat';
 
 const VALID_CATEGORIES = new Set(['채소/과일', '육류/수산', '유제품', '가공/편의점', '양념']);
 
@@ -43,11 +44,39 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
   }
 });
 
+/* ── POST /api/receipt/estimate-ingredient ─────────────────
+   재료명 하나 → 카테고리 + 유통기한 동시 추정 (이름 수정 후 재추정용)
+───────────────────────────────────────────────────────────── */
+router.post('/estimate-ingredient', async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: '재료명이 없습니다.' });
+
+  const prompt = `식재료 "${name}"에 대해 아래 JSON 형식으로만 응답해. 다른 텍스트는 포함하지 마.
+{
+  "category": "채소/과일" | "육류/수산" | "유제품" | "가공/편의점" | "양념",
+  "expiryDays": 숫자
+}
+category는 반드시 5가지 중 하나. expiryDays는 냉장/상온 보관 기준 평균 유통기한(일수).`;
+
+  try {
+    const lambdaRes = await fetch(CHAT_LAMBDA, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: prompt }),
+    });
+    const data = await lambdaRes.json();
+    const jsonMatch = (data.reply || '').match(/\{[\s\S]*\}/);
+    const result = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+    res.json(result);
+  } catch (err) {
+    console.error('[estimate-ingredient] 오류:', err.message);
+    res.status(500).json({ error: '추정 실패' });
+  }
+});
+
 /* ── POST /api/receipt/estimate-expiry ─────────────────────
    재료 이름 목록 → Lambda(Claude) → 유통기한 일수 추정
 ───────────────────────────────────────────────────────────── */
-const CHAT_LAMBDA = 'https://4ur32pd547.execute-api.ap-northeast-2.amazonaws.com/chat';
-
 router.post('/estimate-expiry', async (req, res) => {
   const { ingredients } = req.body;
   if (!Array.isArray(ingredients) || ingredients.length === 0)

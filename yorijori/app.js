@@ -943,6 +943,54 @@ const Fridge = (() => {
       let categoryPickerIdx = -1;
       const CATEGORIES = ['채소/과일', '육류/수산', '유제품', '가공/편의점', '양념'];
 
+      /* 카테고리별 기본 유통기한(일) */
+      const CATEGORY_EXPIRY_DEFAULTS = {
+        '채소/과일': 7,
+        '육류/수산': 3,
+        '유제품': 7,
+        '가공/편의점': 90,
+        '양념': 180,
+      };
+
+      /* 이름 수정 확정 후 AI로 카테고리+유통기한 재추정 */
+      function reEstimateIngredient(idx, name) {
+        fetch('/api/receipt/estimate-ingredient', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!receiptIngredients[idx] || receiptIngredients[idx].removed) return;
+          /* 카테고리 업데이트 */
+          if (data.category && CATEGORIES.includes(data.category)) {
+            receiptIngredients[idx].category_id = data.category;
+          }
+          /* 유통기한 업데이트 */
+          var days = parseInt(data.expiryDays);
+          if (!isNaN(days) && days > 0) {
+            var d = new Date();
+            d.setDate(d.getDate() + days);
+            receiptIngredients[idx].expiryDate = d.toISOString().split('T')[0];
+            receiptIngredients[idx].expiryDays = days;
+            receiptIngredients[idx].expiryAI   = true;
+          }
+          renderReceiptList();
+        })
+        .catch(function() {
+          /* AI 실패 → 카테고리 기반 기본값으로 폴백 */
+          if (!receiptIngredients[idx] || receiptIngredients[idx].removed) return;
+          var cat  = receiptIngredients[idx].category_id || '채소/과일';
+          var days = CATEGORY_EXPIRY_DEFAULTS[cat] || 7;
+          var d    = new Date();
+          d.setDate(d.getDate() + days);
+          receiptIngredients[idx].expiryDate = d.toISOString().split('T')[0];
+          receiptIngredients[idx].expiryDays = days;
+          receiptIngredients[idx].expiryAI   = false;
+          renderReceiptList();
+        });
+      }
+
       function openReceiptModal(ingredients) {
         receiptIngredients = ingredients.map(function(i) {
           return { name: i.name, count: i.count || 1, category_id: i.category_id || '채소/과일', removed: false, expiryDate: '', expiryAI: false };
@@ -1069,8 +1117,12 @@ const Fridge = (() => {
               categoryPickerIdx = -1;
             } else if (action === 'confirm-edit') {
               const inp = list.querySelector('input[data-role="name-input"][data-idx="' + idx + '"]');
-              if (inp && inp.value.trim()) receiptIngredients[idx].name = inp.value.trim();
+              const newName = (inp && inp.value.trim()) ? inp.value.trim() : receiptIngredients[idx].name;
+              receiptIngredients[idx].name = newName;
               receiptIngredients[idx].editing = false;
+              renderReceiptList();
+              reEstimateIngredient(idx, newName); /* AI 카테고리+유통기한 재추정 */
+              return; /* renderReceiptList 이미 호출됨 */
             } else if (action === 'toggle-category') {
               categoryPickerIdx = (categoryPickerIdx === idx) ? -1 : idx;
             } else if (action === 'set-category') {
