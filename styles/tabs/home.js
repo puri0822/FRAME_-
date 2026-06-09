@@ -90,4 +90,23 @@ export default StyleSheet.create({
     borderWidth: 1.5, borderColor: C.primary, backgroundColor: C.primaryLt,
   },
   ingrChipText: { fontSize: 12, fontWeight: "700", color: C.primary },
+  authSection: { marginBottom: 20 },
+  authName: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 3 },
+  authEmail: { fontSize: 13, color: C.textSub, marginBottom: 14 },
+  logoutBtn: {
+    borderWidth: 1, borderColor: C.border, borderRadius: 10,
+    paddingVertical: 11, alignItems: "center",
+  },
+  logoutBtnText: { fontSize: 14, fontWeight: "600", color: C.textSub },
+  googleBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 10, borderWidth: 1, borderColor: "#ddd", borderRadius: 12,
+    paddingVertical: 13, backgroundColor: C.surface,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
+    marginBottom: 20,
+  },
+  googleBtnIcon: { fontSize: 16, fontWeight: "800", color: "#4285F4" },
+  googleBtnText: { fontSize: 15, fontWeight: "600", color: C.text },
+  divider: { height: 1, backgroundColor: C.border, marginBottom: 20 },
 });

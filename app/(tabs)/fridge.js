@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -8,10 +10,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import Svg, { Line } from "react-native-svg";
 import { C } from "../../styles/colors";
 import st from "../../styles/tabs/fridge";
-import { setIngredients } from "../store";
+import { setIngredients, loadFridgeFromStorage, saveFridgeToStorage } from "../store";
+import { useAuth } from "../context/AuthContext";
+import { EC2_ENDPOINTS } from "../config/api";
 
 const CATEGORIES = [
   { id: "채소/과일",   label: "채소/과일",   color: "#16A34A" },
@@ -87,6 +92,156 @@ const INGR_CATALOG = [
 
 const CAT_FILTER_OPTIONS = ["전체", "채소/과일", "육류/수산", "유제품", "가공/편의점", "양념"];
 const CAT_COLOR = { "채소/과일":"#16A34A","육류/수산":"#E05454","유제품":"#3B9EE0","가공/편의점":"#FF6B35","양념":"#E8A020" };
+
+let _idSeq = Date.now();
+function nextId() { return ++_idSeq; }
+
+/* ── 영수증 결과 모달 ── */
+function ReceiptModal({ visible, initialItems, onClose, onSave }) {
+  const [items,     setItems]     = useState([]);
+  const [catPicker, setCatPicker] = useState(-1);
+
+  useEffect(() => {
+    if (visible) {
+      setItems((initialItems || []).map((i, idx) => ({
+        id: idx, name: i.name || "", count: i.count || 1,
+        category_id: i.category_id || "채소/과일",
+        editing: false, removed: false,
+      })));
+      setCatPicker(-1);
+    }
+  }, [visible]);
+
+  function update(idx, patch) {
+    setItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  }
+
+  const activeItems = items.filter(i => !i.removed);
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}>
+        <Pressable style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} onPress={onClose} />
+        <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "88%" }}>
+          {/* 헤더 */}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: "#e5e7eb" }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111" }}>📷 영수증 인식 결과</Text>
+            <TouchableOpacity onPress={onClose} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ fontSize: 14, color: "#6b7280" }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 목록 */}
+          <ScrollView contentContainerStyle={{ padding: 14, gap: 6, paddingBottom: 8 }}>
+            {items.map((item, idx) => {
+              if (item.removed) return null;
+              return (
+                <View key={item.id}>
+                  {/* 아이템 행 */}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5, padding: 10, backgroundColor: "#f9fafb", borderRadius: 10 }}>
+                    {item.editing ? (
+                      <>
+                        <TextInput
+                          style={{ flex: 1, fontSize: 14, fontWeight: "600", borderWidth: 1.5, borderColor: "#FF6B35", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, color: "#111" }}
+                          value={item.name}
+                          onChangeText={t => update(idx, { name: t })}
+                          autoFocus
+                          returnKeyType="done"
+                          onSubmitEditing={() => update(idx, { editing: false })}
+                        />
+                        <TouchableOpacity
+                          style={{ paddingHorizontal: 10, height: 28, borderRadius: 6, backgroundColor: "#e8f5e9", alignItems: "center", justifyContent: "center" }}
+                          onPress={() => update(idx, { editing: false })}>
+                          <Text style={{ color: "#43a047", fontSize: 16 }}>✓</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={{ flex: 1, fontSize: 14, fontWeight: "600", color: "#111" }} numberOfLines={1}>{item.name}</Text>
+                        {/* 카테고리 버튼 */}
+                        <TouchableOpacity
+                          style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1.5,
+                            borderColor: catPicker === idx ? "#FF6B35" : "transparent",
+                            backgroundColor: catPicker === idx ? "#fff3ee" : "#eee" }}
+                          onPress={() => setCatPicker(catPicker === idx ? -1 : idx)}>
+                          <Text style={{ fontSize: 10, color: catPicker === idx ? "#FF6B35" : "#777", fontWeight: "600" }}>{item.category_id}</Text>
+                        </TouchableOpacity>
+                        {/* 이름 편집 */}
+                        <TouchableOpacity
+                          style={{ width: 28, height: 28, borderRadius: 6, borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" }}
+                          onPress={() => { update(idx, { editing: true }); setCatPicker(-1); }}>
+                          <Text style={{ fontSize: 13 }}>✏️</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+
+                    {/* 수량 */}
+                    <TouchableOpacity
+                      style={{ width: 26, height: 26, borderRadius: 6, borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" }}
+                      onPress={() => update(idx, { count: Math.max(1, item.count - 1) })}>
+                      <Text style={{ fontSize: 16, color: "#333", lineHeight: 18 }}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={{ minWidth: 20, textAlign: "center", fontSize: 14, fontWeight: "700", color: "#111" }}>{item.count}</Text>
+                    <TouchableOpacity
+                      style={{ width: 26, height: 26, borderRadius: 6, borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" }}
+                      onPress={() => update(idx, { count: item.count + 1 })}>
+                      <Text style={{ fontSize: 16, color: "#333", lineHeight: 18 }}>+</Text>
+                    </TouchableOpacity>
+
+                    {/* 삭제 */}
+                    <TouchableOpacity
+                      style={{ width: 26, height: 26, borderRadius: 6, backgroundColor: "#ffe5e5", alignItems: "center", justifyContent: "center" }}
+                      onPress={() => { update(idx, { removed: true }); if (catPicker === idx) setCatPicker(-1); }}>
+                      <Text style={{ fontSize: 13, color: "#e53935" }}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 카테고리 피커 */}
+                  {catPicker === idx && !item.editing && (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 10, paddingVertical: 6 }}>
+                      {CAT_OPTIONS.map(cat => (
+                        <TouchableOpacity key={cat}
+                          style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1.5,
+                            borderColor: item.category_id === cat ? "#FF6B35" : "#e5e7eb",
+                            backgroundColor: item.category_id === cat ? "#FF6B35" : "#fff" }}
+                          onPress={() => { update(idx, { category_id: cat }); setCatPicker(-1); }}>
+                          <Text style={{ fontSize: 12, fontWeight: item.category_id === cat ? "700" : "500",
+                            color: item.category_id === cat ? "#fff" : "#555" }}>{cat}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+
+            {/* 재료 직접 추가 */}
+            <TouchableOpacity
+              style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: "#e5e7eb", borderStyle: "dashed", marginTop: 4 }}
+              onPress={() => {
+                setItems(prev => [...prev, { id: nextId(), name: "새 재료", count: 1, category_id: "채소/과일", editing: true, removed: false }]);
+                setCatPicker(-1);
+              }}>
+              <Text style={{ fontSize: 13, color: "#9ca3af" }}>+ 재료 직접 추가</Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {/* 저장 버튼 */}
+          <View style={{ padding: 16, paddingTop: 8 }}>
+            <TouchableOpacity
+              style={{ height: 50, borderRadius: 14, backgroundColor: "#FF6B35", alignItems: "center", justifyContent: "center",
+                shadowColor: "#FF6B35", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 }}
+              onPress={() => onSave(activeItems)}>
+              <Text style={{ fontSize: 15, fontWeight: "700", color: "#fff" }}>
+                냉장고에 추가 ({activeItems.length}개)
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 /* ── 카탈로그 재료 상세 바텀시트 ── */
 function CatalogDetailSheet({ item, onClose, onAdd }) {
@@ -422,6 +577,7 @@ function IngredientItem({ item, selected, onToggle, onEdit }) {
 
 /* ── 메인 컴포넌트 ── */
 export default function FridgeScreen() {
+  const { user } = useAuth();
   const [items, setItems]             = useState([]);
   const [activeTab, setTab]           = useState("전체");
   const [modalOpen, setModal]         = useState(false);
@@ -429,12 +585,62 @@ export default function FridgeScreen() {
   const [editItem, setEditItem]       = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  useEffect(() => { setIngredients(items.map((i) => i.name)); }, [items]);
+  const [scanning,      setScanning]      = useState(false);
+  const [receiptItems,  setReceiptItems]  = useState([]);
+  const [receiptOpen,   setReceiptOpen]   = useState(false);
+
+  const loaded     = useRef(false);
+  const prevUserId = useRef(null);
+
+  // 로컬 파일에서 초기 로드 (중복 id 제거)
+  useEffect(() => {
+    loadFridgeFromStorage().then(stored => {
+      if (stored.length > 0) {
+        const seen = new Set();
+        const deduped = stored.filter(item => {
+          if (seen.has(item.id)) return false;
+          seen.add(item.id);
+          return true;
+        });
+        setItems(deduped);
+      }
+      loaded.current = true;
+    }).catch(() => { loaded.current = true; });
+  }, []);
+
+  // 로그인 시 서버에서 동기화
+  useEffect(() => {
+    if (!user?.userId || user.userId === prevUserId.current) return;
+    prevUserId.current = user.userId;
+    fetch(`${EC2_ENDPOINTS.fridge}/${user.userId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(serverItems => {
+        if (Array.isArray(serverItems)) {
+          setItems(serverItems);
+          saveFridgeToStorage(serverItems).catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }, [user?.userId]);
+
+  // items 변경 시 → store 업데이트 + 로컬 저장 + 서버 동기화
+  useEffect(() => {
+    setIngredients(items.map(i => i.name));
+    if (!loaded.current) return;
+    saveFridgeToStorage(items).catch(() => {});
+    if (user?.userId) {
+      fetch(`${EC2_ENDPOINTS.fridge}/${user.userId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ingredients: items }),
+      }).catch(() => {});
+    }
+  }, [items]);
 
   function addItem(item) {
     const dup = items.some((i) => i.name === item.name && i.category === item.category);
     if (dup) return;
-    setItems((prev) => [...prev, { ...item, id: Date.now() }]);
+    setItems((prev) => [...prev, { ...item, id: nextId() }]);
   }
 
   function removeItem(id) {
@@ -457,6 +663,68 @@ export default function FridgeScreen() {
   function openAdd(defaultCat = "채소/과일") {
     setModalCat(defaultCat);
     setModal(true);
+  }
+
+  async function pickAndScan(source) {
+    let result;
+    try {
+      if (source === "camera") {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") { Alert.alert("카메라 권한이 필요합니다."); return; }
+        result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.85 });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") { Alert.alert("사진 접근 권한이 필요합니다."); return; }
+        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.85 });
+      }
+    } catch { return; }
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    setScanning(true);
+    try {
+      const asset    = result.assets[0];
+      const formData = new FormData();
+      formData.append("image", { uri: asset.uri, type: asset.mimeType || "image/jpeg", name: "receipt.jpg" });
+
+      const res  = await fetch(`${EC2_ENDPOINTS.receipt}/analyze`, { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (!data.success || !data.ingredients?.length) {
+        Alert.alert("인식 실패", "식재료를 찾지 못했어요. 더 선명한 사진으로 다시 시도해 보세요.");
+        return;
+      }
+      setReceiptItems(data.ingredients);
+      setReceiptOpen(true);
+    } catch {
+      Alert.alert("오류", "영수증 분석 중 오류가 발생했습니다.");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  function openReceiptScan() {
+    Alert.alert("영수증 스캔", "이미지를 어떻게 추가할까요?", [
+      { text: "카메라 촬영", onPress: () => pickAndScan("camera") },
+      { text: "갤러리에서 선택", onPress: () => pickAndScan("library") },
+      { text: "취소", style: "cancel" },
+    ]);
+  }
+
+  function handleReceiptSave(receiptIngredients) {
+    setReceiptOpen(false);
+    const newItems = receiptIngredients
+      .filter(item => item.name?.trim() && !items.some(ex => ex.name === item.name && ex.category === item.category_id))
+      .map(item => ({
+        id: nextId(),
+        name: item.name.trim(),
+        category: item.category_id || "채소/과일",
+        expiry: "",
+        count: item.count || 1,
+      }));
+    if (newItems.length > 0) {
+      setItems(prev => [...prev, ...newItems]);
+    }
   }
 
   function getVisible() {
@@ -493,6 +761,14 @@ export default function FridgeScreen() {
           <View style={st.headerActions}>
             <TouchableOpacity style={st.convenienceBtn} onPress={() => openAdd("가공/편의점")}>
               <Text style={st.convenienceBtnText}>🏪 편의점</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[st.convenienceBtn, { borderColor: "#7c3aed", backgroundColor: "#f5f3ff" }, scanning && { opacity: 0.6 }]}
+              onPress={openReceiptScan}
+              disabled={scanning}>
+              {scanning
+                ? <ActivityIndicator size={11} color="#7c3aed" />
+                : <Text style={[st.convenienceBtnText, { color: "#7c3aed" }]}>📷 영수증</Text>}
             </TouchableOpacity>
             <TouchableOpacity style={st.addIngredientBtn} onPress={() => openAdd()}>
               <Svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke={C.primary} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
@@ -573,6 +849,12 @@ export default function FridgeScreen() {
         onClose={() => setEditItem(null)}
         onSave={updateItem}
         onDelete={(id) => { removeItem(id); setEditItem(null); }}
+      />
+      <ReceiptModal
+        visible={receiptOpen}
+        initialItems={receiptItems}
+        onClose={() => setReceiptOpen(false)}
+        onSave={handleReceiptSave}
       />
     </View>
   );

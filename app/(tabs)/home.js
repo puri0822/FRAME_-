@@ -1,10 +1,13 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -13,36 +16,147 @@ import {
 import Svg, { Line, Path, Rect } from "react-native-svg";
 import { C } from "../../styles/colors";
 import st from "../../styles/tabs/home";
+import { useAuth } from "../context/AuthContext";
 import { getIngredients } from "../store";
+import { EC2_ENDPOINTS } from "../config/api";
+import st2, { DIFF_COLOR } from "../../styles/tabs/explore";
 
-const AI_RULES = [
-  { keywords: ["안녕", "하이", "hi", "hello", "반가"], reply: "안녕하세요! 저는 요리조리 AI예요 🍳\n어떤 요리가 궁금하신가요?" },
-  { keywords: ["편의점", "편튀", "컵라면"], reply: "편의점 재료로 뚝딱 만드는 레시피가 있어요! 🏪\n편의점 라면 나베나 참치마요 주먹밥은 어때요?" },
-  { keywords: ["빠른", "간단", "쉬운", "빨리", "10분", "금방"], reply: "⚡ 빠르게 만들 수 있는 레시피 추천!\n• 참치마요 주먹밥 (10분)\n• 떡볶이 치즈 덮밥 (10분)\n• 삼각김밥 된장국 (10분)" },
-  { keywords: ["계란", "달걀"], reply: "계란이 있으시군요! 🥚\n고추참치 계란말이나 냉장고 털이 볶음밥을 추천해요. 계란 하나로 식사가 완성돼요!" },
-  { keywords: ["밥", "볶음밥", "찬밥"], reply: "찬밥 있으면 냉장고 털이 볶음밥이 최고예요 🍳\n냉동 채소 + 계란 + 간장만 있으면 15분 만에 완성!" },
-  { keywords: ["두부"], reply: "두부가 있다면 두부 간장 조림을 강추해요 🥬\n재료도 간단하고 밥도둑 반찬으로 딱이에요!" },
-  { keywords: ["고기", "육류", "스팸", "돼지", "소고기"], reply: "스팸이나 육류가 있다면 스팸 마늘종 볶음 어때요? 🥩\n고소하고 짭짤해서 밥 한 그릇 뚝딱이에요!" },
-  { keywords: ["다이어트", "건강", "저칼로리", "가벼운"], reply: "건강한 요리를 원하신다면 두부 간장 조림이나 채소 볶음을 추천해요 🥗\n칼로리는 낮고 영양은 높아요!" },
-  { keywords: ["김치"], reply: "묵은 김치가 있다면 김치 치즈 부침개를 만들어 보세요! 🥞\n고소한 치즈와 새콤한 김치의 조합이 환상이에요." },
-  { keywords: ["뭐 해먹", "뭐먹", "추천", "메뉴"], reply: "오늘 뭐 먹을지 고민이시군요 😄\n냉장고 탭에서 재료를 등록하시면 탐색 탭에서 맞춤 레시피를 추천해 드려요!" },
-];
+function RecipeModal({ recipeId, onClose }) {
+  const [recipe,  setRecipe]  = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [youtube, setYoutube] = useState(null);
 
-function getFakeResponse(text) {
-  const lower = text.toLowerCase();
-  if (lower.includes("냉장고") || lower.includes("내 재료") || lower.includes("있는 재료")) {
-    const items = getIngredients();
-    if (!items.length) return "냉장고에 아직 재료가 없어요 🧊\n냉장고 탭에서 재료를 추가해 주세요!";
-    const names = items.slice(0, 5).join(", ");
-    const extra = items.length > 5 ? ` 외 ${items.length - 5}개` : "";
-    return `냉장고에 ${names}${extra} 있군요! 👀\n탐색 탭에서 맞춤 레시피를 확인해 보세요 👇`;
-  }
-  for (const rule of AI_RULES) {
-    if (rule.keywords.some((k) => lower.includes(k))) return rule.reply;
-  }
-  return "흠, 잘 모르겠어요 😅\n레시피 탐색 탭에서 직접 검색해 보시거나,\n냉장고 재료를 등록하면 맞춤 추천을 드릴 수 있어요!";
+  useEffect(() => {
+    if (!recipeId) return;
+    setLoading(true);
+    setYoutube(null);
+    fetch(`${EC2_ENDPOINTS.recipes}/${recipeId}`)
+      .then(r => r.json())
+      .then(data => {
+        setRecipe(data);
+        return fetch(`${EC2_ENDPOINTS.youtube}?q=${encodeURIComponent(data.name)}&recipeId=${recipeId}`);
+      })
+      .then(r => r.json())
+      .then(videos => { if (videos?.length > 0) setYoutube(videos[0]); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [recipeId]);
+
+  const diffColor = recipe ? (DIFF_COLOR[recipe.difficulty] || "#888") : "#888";
+
+  return (
+    <Modal visible={!!recipeId} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={st2.modalOverlay}>
+        <Pressable style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} onPress={onClose} />
+        <View style={st2.modalSheet}>
+          <View style={st2.modalTopBar}>
+            <View style={st2.modalHandle} />
+            <TouchableOpacity style={st2.modalCloseBtn} onPress={onClose}>
+              <Text style={{ fontSize: 14, color: C.textSub }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          {loading ? (
+            <View style={{ padding: 40, alignItems: "center" }}>
+              <Text style={{ color: C.textMuted }}>불러오는 중...</Text>
+            </View>
+          ) : recipe ? (
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+              <View style={st2.recipeHeader}>
+                <View style={st2.recipeEmoji}>
+                {recipe.imageUrl
+                  ? <Image source={{ uri: recipe.imageUrl }} style={{ width: 64, height: 64, borderRadius: 12 }} resizeMode="cover" />
+                  : <Text style={{ fontSize: 40 }}>🍽️</Text>}
+              </View>
+                <View style={{ flex: 1 }}>
+                  <View style={st2.modalNameRow}>
+                    <Text style={[st2.recipeName, { marginBottom: 0, flex: 1 }]}>{recipe.name}</Text>
+                    <View style={st2.modalHeaderRating}>
+                      <Text style={{ fontSize: 14 }}>⭐</Text>
+                      <Text style={st2.modalHeaderRatingText}>{Number(recipe.rating).toFixed(1)}</Text>
+                    </View>
+                  </View>
+                  <View style={st2.badgeRow}>
+                    <View style={st2.badgeTime}><Text style={st2.badgeTimeText}>⏱ {recipe.time}분</Text></View>
+                    <View style={[st2.badgeDiff, { backgroundColor: diffColor + "20" }]}>
+                      <Text style={[st2.badgeDiffText, { color: diffColor }]}>{recipe.difficulty}</Text>
+                    </View>
+                  </View>
+                  <Text style={st2.recipeIngr} numberOfLines={2}>
+                    {Array.isArray(recipe.ingredients) ? recipe.ingredients.join(" · ") : ""}
+                  </Text>
+                </View>
+              </View>
+
+              {Array.isArray(recipe.instructions) && recipe.instructions.length > 0 && (
+                <>
+                  <View style={st2.divider} />
+                  <View style={{ paddingVertical: 18 }}>
+                    <Text style={st2.sectionTitle}>조리 과정</Text>
+                    {recipe.instructions.map((step, i) => (
+                      <View key={i} style={st2.stepItem}>
+                        <View style={st2.stepNumber}><Text style={st2.stepNumberText}>{i + 1}</Text></View>
+                        <Text style={st2.stepText}>{step}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {youtube && (
+                <>
+                  <View style={st2.divider} />
+                  <View style={{ paddingVertical: 18 }}>
+                    <Text style={st2.sectionTitle}>유튜브 참고</Text>
+                    <TouchableOpacity onPress={() => Linking.openURL(youtube.url)}>
+                      <View style={{ borderRadius: 10, overflow: "hidden" }}>
+                        <Image source={{ uri: youtube.thumbnail }} style={{ width: "100%", height: 180, backgroundColor: "#000" }} resizeMode="cover" />
+                        <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "center", alignItems: "center" }}>
+                          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center" }}>
+                            <Text style={{ fontSize: 20, color: "#fff" }}>▶</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                    <Text style={st2.ytTitle}>{youtube.title}</Text>
+                  </View>
+                </>
+              )}
+
+              {recipe.reviews?.length > 0 && (
+                <>
+                  <View style={st2.divider} />
+                  <View style={{ paddingTop: 16, paddingBottom: 8 }}>
+                    <Text style={st2.sectionTitle}>이용 후기</Text>
+                    {recipe.reviews.slice(0, 3).map((rv, i) => (
+                      <View key={i} style={st2.textReviewItem}>
+                        <View style={st2.textReviewMeta}>
+                          <Text style={st2.reviewUser}>{rv.user}</Text>
+                          <Text style={st2.textReviewDate}>{rv.date}</Text>
+                        </View>
+                        <Text style={st2.reviewText}>{rv.text}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          ) : null}
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
+const RECOMMEND_POOL = [
+  "오늘 저녁 한식 레시피 추천해줘",
+  "간단하게 만들 수 있는 레시피 추천해줘",
+  "10분 안에 만드는 레시피 추천해줘",
+  "계란으로 만드는 레시피 추천해줘",
+  "밥이랑 먹기 좋은 반찬 추천해줘",
+  "혼밥하기 좋은 레시피 추천해줘",
+  "냉장고 재료로 만들 수 있는 요리 추천해줘",
+  "오늘 기분 전환할 수 있는 색다른 레시피 추천해줘",
+];
 const QUICK_CHIPS = ["냉장고 재료 관리 🧊", "추천 레시피 🍳", "인기 요리 🔥"];
 const FALLBACK_INGREDIENTS = ["쌀", "돼지고기", "계란", "시금치"];
 
@@ -64,6 +178,13 @@ function SendIcon() {
 }
 
 function SettingsModal({ visible, onClose }) {
+  const { user, loginWithGoogle, logout } = useAuth();
+
+  async function handleLogout() {
+    await logout();
+    onClose();
+  }
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={st.modalOverlay} onPress={onClose}>
@@ -75,6 +196,21 @@ function SettingsModal({ visible, onClose }) {
             </TouchableOpacity>
           </View>
           <View style={st.settingsBody}>
+            {user ? (
+              <View style={st.authSection}>
+                <Text style={st.authName}>{user.name || user.email}</Text>
+                <Text style={st.authEmail}>{user.email}</Text>
+                <TouchableOpacity style={st.logoutBtn} onPress={handleLogout}>
+                  <Text style={st.logoutBtnText}>로그아웃</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={st.googleBtn} onPress={loginWithGoogle}>
+                <Text style={st.googleBtnIcon}>G</Text>
+                <Text style={st.googleBtnText}>Google로 로그인</Text>
+              </TouchableOpacity>
+            )}
+            <View style={st.divider} />
             <Text style={st.settingsSectionTitle}>폰트</Text>
             <Text style={{ fontSize: 13, color: C.textMuted }}>시스템 기본 폰트 사용 중</Text>
             <View style={{ height: 20 }} />
@@ -99,8 +235,9 @@ export default function HomeScreen() {
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen]     = useState(false);
   const [ingrPickerOpen, setIngrPickerOpen] = useState(false);
+  const [selectedRecipeId, setSelectedRecipeId] = useState(null);
   const scrollRef = useRef(null);
 
   function getDisplayIngredients() {
@@ -108,24 +245,40 @@ export default function HomeScreen() {
     return items.length ? items : FALLBACK_INGREDIENTS;
   }
 
-  function sendMessage(text) {
+  async function sendMessage(text) {
     const trimmed = (text || input).trim();
-    if (!trimmed) return;
+    if (!trimmed || isTyping) return;
     setIngrPickerOpen(false);
-    const userMsg = { id: Date.now(), role: "user", text: trimmed };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [...prev, { id: Date.now(), role: "user", text: trimmed }]);
     setInput("");
     setIsTyping(true);
-    const delay = 800 + Math.random() * 700;
-    setTimeout(() => {
+
+    try {
+      const res = await fetch(EC2_ENDPOINTS.chat, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: trimmed }),
+      });
+      const data = await res.json();
+      const reply = data.reply || "응답을 받지 못했어요.";
+      const newMsg = { id: Date.now() + 1, role: "ai", text: reply };
+
+      if (data.action?.type === "RECIPE_SEARCH" && data.action.recipes?.length > 0) {
+        newMsg.recipes = data.action.recipes;
+      } else if (data.action?.type === "FRIDGE_SAVE" && data.action.items?.length > 0) {
+        newMsg.text += `\n\n추가할 재료: ${data.action.items.map((i) => i.name).join(", ")}`;
+      }
+
+      setMessages((prev) => [...prev, newMsg]);
+    } catch {
+      setMessages((prev) => [...prev, { id: Date.now() + 1, role: "ai", text: "서버 연결에 실패했어요. 다시 시도해주세요." }]);
+    } finally {
       setIsTyping(false);
-      setMessages((prev) => [...prev, { id: Date.now() + 1, role: "ai", text: getFakeResponse(trimmed) }]);
-    }, delay);
+    }
   }
 
   return (
     <KeyboardAvoidingView style={st.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      {/* 헤더 */}
       <View style={st.header}>
         <View>
           <Text style={st.appTitle}>요리조리 🍳</Text>
@@ -136,7 +289,6 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 채팅 영역 */}
       <View style={st.chatWrap}>
         <ScrollView
           ref={scrollRef}
@@ -145,11 +297,31 @@ export default function HomeScreen() {
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
           {messages.map((msg) => (
-            <View key={msg.id} style={[st.chatMsg, msg.role === "ai" ? st.chatMsgAi : st.chatMsgUser]}>
-              {msg.role === "ai" && <View style={st.avatar}><Text>🤖</Text></View>}
-              <View style={[st.bubble, msg.role === "ai" ? st.bubbleAi : st.bubbleUser]}>
-                <Text style={[st.bubbleText, msg.role === "user" && { color: "#fff" }]}>{msg.text}</Text>
+            <View key={msg.id}>
+              <View style={[st.chatMsg, msg.role === "ai" ? st.chatMsgAi : st.chatMsgUser]}>
+                {msg.role === "ai" && <View style={st.avatar}><Text>🤖</Text></View>}
+                <View style={[st.bubble, msg.role === "ai" ? st.bubbleAi : st.bubbleUser]}>
+                  <Text style={[st.bubbleText, msg.role === "user" && { color: "#fff" }]}>{msg.text}</Text>
+                </View>
               </View>
+              {msg.recipes?.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={rc.row}>
+                  {msg.recipes.map((r) => (
+                    <TouchableOpacity key={r.id} style={rc.card} onPress={() => setSelectedRecipeId(r.id)}>
+                      {r.image_url
+                        ? <Image source={{ uri: r.image_url }} style={rc.thumb} resizeMode="cover" />
+                        : <Text style={rc.emoji}>🍽️</Text>}
+                      <Text style={rc.name} numberOfLines={2}>{r.name}</Text>
+                      <Text style={rc.meta}>{r.cook_time_min}분 · {r.difficulty}</Text>
+                      {r.key_ingredients?.length > 0 && (
+                        <Text style={rc.ingr} numberOfLines={1}>
+                          {(Array.isArray(r.key_ingredients) ? r.key_ingredients : JSON.parse(r.key_ingredients || "[]")).slice(0, 3).join(", ")}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           ))}
           {isTyping && (
@@ -162,48 +334,41 @@ export default function HomeScreen() {
           )}
         </ScrollView>
 
-        {/* 재료 선택 칩 */}
         {ingrPickerOpen ? (
           <View style={st.ingrPickerWrap}>
             <Text style={st.ingrPickerLabel}>재료 선택</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8, paddingHorizontal: 14, paddingVertical: 6 }}
-            >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 14, paddingVertical: 6 }}>
               {getDisplayIngredients().map((name) => (
-                <TouchableOpacity
-                  key={name}
-                  style={st.ingrChip}
-                  onPress={() => sendMessage(`${name}으로 만들 수 있는 요리 추천해줘`)}
-                >
+                <TouchableOpacity key={name} style={st.ingrChip} onPress={() => sendMessage(`${name}으로 만들 수 있는 요리 추천해줘`)}>
                   <Text style={st.ingrChipText}>{name}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
         ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={st.quickChips}
-            contentContainerStyle={{ gap: 8, paddingHorizontal: 14, paddingVertical: 6 }}
-          >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.quickChips} contentContainerStyle={{ gap: 8, paddingHorizontal: 14, paddingVertical: 6 }}>
             {QUICK_CHIPS.map((chip) => (
-              <TouchableOpacity key={chip} style={st.quickChip} onPress={() => sendMessage(chip)}>
+              <TouchableOpacity
+                key={chip}
+                style={st.quickChip}
+                onPress={() => {
+                  if (chip === "추천 레시피 🍳") {
+                    const random = RECOMMEND_POOL[Math.floor(Math.random() * RECOMMEND_POOL.length)];
+                    sendMessage(random);
+                  } else {
+                    sendMessage(chip);
+                  }
+                }}
+              >
                 <Text style={st.quickChipText}>{chip}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
         )}
 
-        {/* 입력 바 */}
         <View style={st.inputBar}>
           <View style={st.inputWrap}>
-            <TouchableOpacity
-              style={st.inputIconBtn}
-              onPress={() => setIngrPickerOpen((v) => !v)}
-            >
+            <TouchableOpacity style={st.inputIconBtn} onPress={() => setIngrPickerOpen((v) => !v)}>
               <Svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke={ingrPickerOpen ? C.primary : C.textMuted} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
                 <Line x1={12} y1={5} x2={12} y2={19} /><Line x1={5} y1={12} x2={19} y2={12} />
               </Svg>
@@ -233,6 +398,17 @@ export default function HomeScreen() {
       </View>
 
       <SettingsModal visible={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <RecipeModal recipeId={selectedRecipeId} onClose={() => setSelectedRecipeId(null)} />
     </KeyboardAvoidingView>
   );
 }
+
+const rc = StyleSheet.create({
+  row:   { paddingHorizontal: 46, paddingVertical: 8, gap: 10 },
+  card:  { width: 130, backgroundColor: "#fff", borderRadius: 12, overflow: "hidden", elevation: 3, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4 },
+  thumb: { width: 130, height: 90, backgroundColor: "#f0f0f0" },
+  emoji: { fontSize: 28, padding: 12 },
+  name:  { fontSize: 13, fontWeight: "700", color: "#111", lineHeight: 18, paddingHorizontal: 10, paddingTop: 8 },
+  meta:  { fontSize: 11, color: "#FF6B35", fontWeight: "600", paddingHorizontal: 10 },
+  ingr:  { fontSize: 11, color: "#888", paddingHorizontal: 10, paddingBottom: 10 },
+});
