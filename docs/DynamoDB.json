@@ -1,0 +1,27 @@
+{
+  "TableName": "yorijori-chat-sessions",
+  "KeySchema": [
+    { "AttributeName": "userId", "KeyType": "HASH" },
+    { "AttributeName": "sessionId", "KeyType": "RANGE" }
+  ],
+  "AttributeDefinitions": [
+    { "AttributeName": "userId", "AttributeType": "S" },
+    { "AttributeName": "sessionId", "AttributeType": "S" }
+  ],
+  "BillingMode": "PAY_PER_REQUEST",
+  "Description": {
+    "PartitionKey": "userId - Google OAuth sub ID (사용자 식별자)",
+    "SortKey": "sessionId - 세션 시작 ISO timestamp",
+    "Usage": "AI 챗봇 대화 세션 저장. AWS Lambda (API Gateway: /chat, /scan) 에서 사용."
+  },
+  "SampleItem": {
+    "userId": "115823049871234567890",
+    "sessionId": "2026-06-13T10:00:00Z",
+    "messages": [
+      { "role": "user", "text": "토마토 3개 유통기한 3일 뒤로 추가해줘" },
+      { "role": "ai",   "text": "토마토 3개를 냉장고에 추가했어요! (유통기한: 2026-06-16)" }
+    ],
+    "intent": "FRIDGE_SAVE",
+    "updatedAt": "2026-06-13T10:05:00Z"
+  }
+}
