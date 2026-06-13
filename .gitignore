@@ -37,3 +37,6 @@ lambda_deploy_temp/
 patch.js
 temp_app.js
 *.pptx
+
+# db credentials (실제 값은 별도 공유)
+db.config.js
