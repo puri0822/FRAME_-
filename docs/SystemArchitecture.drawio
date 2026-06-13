@@ -41,7 +41,7 @@
     </mxCell>
 
     <!-- EC2 -->
-    <mxCell id="ec2" value="&lt;b&gt;AWS EC2&lt;/b&gt;&lt;br&gt;Node.js / Express&lt;br&gt;3.39.25.163:3000  (PM2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;arcSize=8;" vertex="1" parent="1">
+    <mxCell id="ec2" value="&lt;b&gt;AWS EC2&lt;/b&gt;&lt;br&gt;Node.js / Express&lt;br&gt;EC2 주소 (PM2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;arcSize=8;" vertex="1" parent="1">
       <mxGeometry x="200" y="310" width="240" height="80" as="geometry" />
     </mxCell>
 
@@ -91,7 +91,7 @@
     </mxCell>
 
     <!-- RDS tables -->
-    <mxCell id="rdstables" value="user  •  recipe  •  recipe_category&lt;br&gt;recipe_ingredient  •  recipe_step&lt;br&gt;recipe_review  •  user_fridge&lt;br&gt;chat_history" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4d6;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+    <mxCell id="rdstables" value="유저  •  레시피  •  레시피 카테고리&lt;br&gt;레시피 재료  •  조리 순서&lt;br&gt;리뷰/좋아요  •  냉장고 재료&lt;br&gt;채팅 기록" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4d6;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
       <mxGeometry x="100" y="675" width="360" height="70" as="geometry" />
     </mxCell>
 
