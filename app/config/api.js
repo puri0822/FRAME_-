@@ -5,7 +5,7 @@ export const AUTH_ENDPOINTS = {
   me:     `${API_BASE_URL}/auth/me`,
 };
 
-export const EC2_BASE_URL = "http://13.125.213.80:3000";
+export const EC2_BASE_URL = "http://3.39.25.163:3000";
 
 export const EC2_ENDPOINTS = {
   recipes:    `${EC2_BASE_URL}/api/recipes`,

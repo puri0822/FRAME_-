@@ -111,7 +111,7 @@ export default StyleSheet.create({
   badgeDiffText: { fontSize: 11, fontWeight: "700" },
   heartWrap: { flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 },
   heartBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", marginTop: -2 },
-  heartBtnActive: { backgroundColor: "#FEE2E2" },
+  heartBtnActive: {},
   heartCount: { fontSize: 10, color: "#9CA3AF", fontWeight: "500", lineHeight: 12 },
   emptyState: { alignItems: "center", paddingVertical: 44, gap: 8 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },

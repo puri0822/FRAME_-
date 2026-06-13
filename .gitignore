@@ -2,6 +2,11 @@
 node_modules/
 back/node_modules/
 
+# ios build artifacts
+ios/Pods/
+ios/build/
+ios/DerivedData/
+
 # env
 .env
 .env.local

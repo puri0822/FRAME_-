@@ -46,6 +46,42 @@ const CAT_EMOJI = { "채소/과일":"🥬", "육류/수산":"🥩", "유제품":
 
 function getEmoji(name, cat) { return INGR_EMOJI[name] || CAT_EMOJI[cat] || "🥘"; }
 
+// 재료명/카테고리 기반 기본 유통기한 자동 설정 (오늘 기준 +N일)
+const EXPIRY_NAME_DAYS = {
+  // 유제품 - 단기
+  우유: 3, 생크림: 3, 요거트: 5, 요구르트: 5,
+  // 두부/순두부
+  두부: 4, 순두부: 3,
+  // 육류 - 단기
+  돼지고기: 3, 삼겹살: 3, 소고기: 3, 닭고기: 3, 닭가슴살: 3,
+  생선: 2, 연어: 2, 새우: 2, 오징어: 2,
+  // 채소 - 중기
+  시금치: 5, 상추: 5, 깻잎: 5, 쪽파: 5, 부추: 5,
+  대파: 7, 파: 7, 양파: 14, 마늘: 30, 감자: 14, 고구마: 14,
+  당근: 14, 배추: 7, 양배추: 7, 무: 10, 고추: 7, 오이: 5, 토마토: 7,
+  버섯: 5,
+  // 계란
+  계란: 21, 달걀: 21,
+  // 가공식품
+  김치: 90, 베이컨: 7, 소시지: 7, 햄: 7, 스팸: 180,
+  치즈: 14, 버터: 30,
+  // 양념/장류
+  된장: 180, 간장: 365, 고추장: 180, 소금: 730, 설탕: 730, 참기름: 180,
+  // 과일
+  사과: 14, 귤: 14, 바나나: 5, 딸기: 5,
+  // 곡류
+  쌀: 365, 라면: 180, 빵: 5,
+};
+const EXPIRY_CAT_DAYS = {
+  "채소/과일": 7, "육류/수산": 3, "유제품": 5, "가공/편의점": 30, "양념": 180,
+};
+function guessExpiry(name, category) {
+  const days = EXPIRY_NAME_DAYS[name] ?? EXPIRY_CAT_DAYS[category] ?? 7;
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 function getExpiryInfo(expiryStr) {
   if (!expiryStr) return null;
   const expiry = new Date(expiryStr);
@@ -107,11 +143,16 @@ function ReceiptModal({ visible, initialItems, onClose, onSave }) {
 
   useEffect(() => {
     if (visible) {
-      setItems((initialItems || []).map((i, idx) => ({
-        id: idx, name: i.name || "", count: i.count || 1,
-        category_id: i.category_id || "채소/과일",
-        editing: false, removed: false,
-      })));
+      setItems((initialItems || []).map((i, idx) => {
+        const name = i.name || "";
+        const cat  = i.category_id || "채소/과일";
+        return {
+          id: idx, name, count: i.count || 1,
+          category_id: cat,
+          expiry: guessExpiry(name, cat),
+          editing: false, removed: false,
+        };
+      }));
       setCatPicker(-1);
     }
   }, [visible]);
@@ -200,6 +241,40 @@ function ReceiptModal({ visible, initialItems, onClose, onSave }) {
                     </TouchableOpacity>
                   </View>
 
+                  {/* 유통기한 */}
+                  {!item.editing && (
+                    <View style={{ paddingHorizontal: 10, paddingTop: 2, paddingBottom: 8, alignItems: "flex-end" }}>
+                      {item.expiryEditing ? (
+                        <TextInput
+                          style={{ fontSize: 12, paddingHorizontal: 8, paddingVertical: 4,
+                            borderWidth: 1.5, borderRadius: 6, backgroundColor: "#fff",
+                            color: "#111", borderColor: "#FF6B35", textAlign: "right" }}
+                          value={item.expiry}
+                          onChangeText={t => update(idx, { expiry: t })}
+                          placeholder="YYYY-MM-DD"
+                          placeholderTextColor="#bbb"
+                          keyboardType="numeric"
+                          maxLength={10}
+                          autoFocus
+                          returnKeyType="done"
+                          onSubmitEditing={() => update(idx, { expiryEditing: false })}
+                          onBlur={() => update(idx, { expiryEditing: false })}
+                        />
+                      ) : (
+                        <TouchableOpacity onPress={() => update(idx, { expiryEditing: true })}>
+                          <Text style={{ fontSize: 12, fontWeight: "600", color: "#FF6B35" }}>
+                            {(() => {
+                              const parts = (item.expiry || "").split("-");
+                              if (parts.length === 3 && parts[1] && parts[2])
+                                return `~${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}까지`;
+                              return "유통기한 미설정";
+                            })()}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+
                   {/* 카테고리 피커 */}
                   {catPicker === idx && !item.editing && (
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 10, paddingVertical: 6 }}>
@@ -223,7 +298,7 @@ function ReceiptModal({ visible, initialItems, onClose, onSave }) {
             <TouchableOpacity
               style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: "#e5e7eb", borderStyle: "dashed", marginTop: 4 }}
               onPress={() => {
-                setItems(prev => [...prev, { id: nextId(), name: "새 재료", count: 1, category_id: "채소/과일", editing: true, removed: false }]);
+                setItems(prev => [...prev, { id: nextId(), name: "새 재료", count: 1, category_id: "채소/과일", expiry: "", editing: true, removed: false }]);
                 setCatPicker(-1);
               }}>
               <Text style={{ fontSize: 13, color: "#9ca3af" }}>+ 재료 직접 추가</Text>
@@ -749,7 +824,7 @@ export default function FridgeScreen() {
         id: nextId(),
         name: item.name.trim(),
         category: item.category_id || "채소/과일",
-        expiry: "",
+        expiry: item.expiry || guessExpiry(item.name?.trim(), item.category_id),
         count: item.count || 1,
       }));
     if (newItems.length > 0) {

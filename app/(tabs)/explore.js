@@ -1,5 +1,6 @@
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import {
   ActivityIndicator,
@@ -297,6 +298,7 @@ function RecipeModal({ recipe, onClose }) {
 }
 
 export default function ExploreScreen() {
+  const { user } = useAuth();
   const [allRecipes,     setAllRecipes] = useState([]);
   const [trending,       setTrending]   = useState([]);
   const [categories,     setCategories] = useState(["전체"]);
@@ -305,7 +307,9 @@ export default function ExploreScreen() {
   const [refreshing,     setRefreshing]    = useState(false);
   const [query,          setQuery]          = useState("");
   const [activeCategory, setCategory]       = useState("전체");
-  const [favorites,      setFavorites]      = useState(new Set());
+  const [favorites,      setFavorites]      = useState(new Set());  // 북마크 (reco 섹션 ♡)
+  const [likedIds,       setLikedIds]       = useState(new Set());  // 하트 (레시피 리스트)
+  const likeStorageKey = user?.userId ? `liked_${user.userId}` : null;
   const [showFavOnly,    setShowFavOnly]    = useState(false);
   const [searchOpen,     setSearchOpen]     = useState(false);
   const [selectedRecipe, setRecipe]         = useState(null);
@@ -372,10 +376,20 @@ export default function ExploreScreen() {
     }, [trending])
   );
 
+  // 유저 로그인 시 AsyncStorage에서 좋아요 목록 불러오기
+  useEffect(() => {
+    if (!likeStorageKey) return;
+    AsyncStorage.getItem(likeStorageKey).then(val => {
+      if (val) {
+        try { setLikedIds(new Set(JSON.parse(val))); } catch {}
+      }
+    });
+  }, [likeStorageKey]);
+
   useEffect(() => { setVisibleCount(20); }, [filtered]);
 
   useEffect(() => {
-    if (!query && activeCategory === "전체" && !showFavOnly) return;
+    if (!query && activeCategory === "전체" && !showFavOnly) { setFiltered(allRecipes.length ? allRecipes : []); return; }
     setSearchLoading(true);
     const params = new URLSearchParams();
     if (activeCategory !== "전체") params.set("category", activeCategory);
@@ -384,12 +398,12 @@ export default function ExploreScreen() {
       .then(r => r.json())
       .then(data => {
         const arr    = Array.isArray(data) ? data : [];
-        const result = showFavOnly ? arr.filter(r => favorites.has(r.id)) : arr;
+        const result = showFavOnly ? arr.filter(r => likedIds.has(r.id)) : arr;
         setFiltered(result);
       })
       .catch(() => {})
       .finally(() => setSearchLoading(false));
-  }, [query, activeCategory, showFavOnly]);
+  }, [query, activeCategory, showFavOnly, likedIds]);
 
   async function shuffle() {
     setQuery("");
@@ -424,12 +438,46 @@ export default function ExploreScreen() {
     }
   }
 
+  // reco 섹션 북마크 전용 (즐겨찾기 필터용)
   function toggleFav(id) {
     setFavorites((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  }
+
+  // 레시피 리스트 하트 전용 (좋아요 카운트 반영)
+  function toggleLike(id) {
+    const liked = !likedIds.has(id);
+    setLikedIds((prev) => {
+      const next = new Set(prev);
+      if (liked) next.add(id); else next.delete(id);
+      if (likeStorageKey) {
+        AsyncStorage.setItem(likeStorageKey, JSON.stringify([...next]));
+      }
+      return next;
+    });
+    const delta = liked ? 1 : -1;
+    setAllRecipes(prev => prev.map(r => r.id === id ? { ...r, likes: (r.likes || 0) + delta } : r));
+    setFiltered(prev => {
+      const updated = prev.map(r => r.id === id ? { ...r, likes: (r.likes || 0) + delta } : r);
+      return showFavOnly && !liked ? updated.filter(r => r.id !== id) : updated;
+    });
+    setRecoRecipes(prev => prev.map(r => r.id === id ? { ...r, likes: (r.likes || 0) + delta } : r));
+    if (user?.userId) {
+      fetch(`${EC2_ENDPOINTS.recipes}/${id}/like`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.userId, liked }),
+      }).then(r => r.json()).then(data => {
+        if (data.likes != null) {
+          setAllRecipes(prev => prev.map(r => r.id === id ? { ...r, likes: data.likes } : r));
+          setFiltered(prev => prev.map(r => r.id === id ? { ...r, likes: data.likes } : r));
+          setRecoRecipes(prev => prev.map(r => r.id === id ? { ...r, likes: data.likes } : r));
+        }
+      }).catch(() => {});
+    }
   }
 
   if (loading) {
@@ -483,21 +531,27 @@ export default function ExploreScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#FF6B35"]} tintColor="#FF6B35" />}
       >
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 2 }}>
-          {categories.map((cat) => (
-            <TouchableOpacity
-              key={cat}
-              style={[st.catChip, activeCategory === cat && !showFavOnly && st.catChipActive]}
-              onPress={() => { setCategory(cat); setShowFavOnly(false); }}
-            >
-              <Text style={[st.catChipText, activeCategory === cat && !showFavOnly && st.catChipTextActive]}>{cat}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            style={[st.catChip, showFavOnly && st.catChipFavActive]}
-            onPress={() => { setShowFavOnly(!showFavOnly); if (!showFavOnly) setCategory("전체"); }}
-          >
-            <Text style={[st.catChipText, showFavOnly && st.catChipTextFavActive]}>♡ 즐겨찾기</Text>
-          </TouchableOpacity>
+          {categories.flatMap((cat) => {
+            const chips = [
+              <TouchableOpacity
+                key={cat}
+                style={[st.catChip, activeCategory === cat && !showFavOnly && st.catChipActive]}
+                onPress={() => { setCategory(cat); setShowFavOnly(false); }}
+              >
+                <Text style={[st.catChipText, activeCategory === cat && !showFavOnly && st.catChipTextActive]}>{cat}</Text>
+              </TouchableOpacity>
+            ];
+            if (cat === "전체") chips.push(
+              <TouchableOpacity
+                key="fav"
+                style={[st.catChip, showFavOnly && st.catChipFavActive]}
+                onPress={() => { setShowFavOnly(!showFavOnly); if (!showFavOnly) setCategory("전체"); }}
+              >
+                <Text style={[st.catChipText, showFavOnly && st.catChipTextFavActive]}>♡ 즐겨찾기</Text>
+              </TouchableOpacity>
+            );
+            return chips;
+          })}
         </ScrollView>
 
         <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
@@ -627,14 +681,14 @@ export default function ExploreScreen() {
                 </View>
                 <View style={st.heartWrap}>
                   <TouchableOpacity
-                    style={[st.heartBtn, favorites.has(recipe.id) && st.heartBtnActive]}
-                    onPress={() => toggleFav(recipe.id)}
+                    style={st.heartBtn}
+                    onPress={() => toggleLike(recipe.id)}
                   >
                     <Svg width={20} height={20} viewBox="0 0 24 24">
                       <Path
                         d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
-                        fill={favorites.has(recipe.id) ? "#E53E3E" : "none"}
-                        stroke={favorites.has(recipe.id) ? "#E53E3E" : "#D0D0D0"}
+                        fill={likedIds.has(recipe.id) ? "#E53E3E" : "none"}
+                        stroke={likedIds.has(recipe.id) ? "#E53E3E" : "#D0D0D0"}
                         strokeWidth={2}
                         strokeLinecap="round"
                         strokeLinejoin="round"
