@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+back/node_modules/
+lambda_auth/node_modules/
+
+# env
+.env
+.env.local
+
+# expo
+.expo/
+dist/
+web-build/
+
+# os
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
+
+# ide
+.idea/
+
+# claude code
+.claude/
+
+# android - machine specific
+android/local.properties
+
+# build artifacts & zips
+*.zip
+lambda_deploy_temp/
+
+# temp files
+patch.js
+temp_app.js
+*.pptx
