@@ -145,6 +145,6 @@ C.textMuted  // 보조 텍스트 색상
 | 백엔드 | Node.js, Express, PM2 |
 | 데이터베이스 | AWS RDS (MySQL) |
 | 인증 | Google OAuth 2.0, AWS API Gateway, Lambda |
-| AI | Anthropic Claude API (챗봇), AWS Bedrock Titan (시맨틱 검색) |
+| AI | AWS Bedrock Claude 3 Haiku (챗봇), AWS Bedrock Amazon Titan (시맨틱 검색) |
 | 외부 API | YouTube Data API v3 |
 | 로컬 저장소 | AsyncStorage |
