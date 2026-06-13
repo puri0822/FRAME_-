@@ -5,69 +5,49 @@
 
     <!-- Title -->
     <mxCell id="title" value="요리조리 시스템 구성도" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="527" y="30" width="600" height="40" as="geometry" />
+      <mxGeometry x="477" y="30" width="700" height="40" as="geometry" />
     </mxCell>
 
     <!-- Client -->
     <mxCell id="client" value="&lt;b&gt;Client&lt;/b&gt;&lt;br&gt;React Native / Expo (iOS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;arcSize=10;" vertex="1" parent="1">
-      <mxGeometry x="577" y="100" width="500" height="60" as="geometry" />
+      <mxGeometry x="477" y="100" width="700" height="60" as="geometry" />
     </mxCell>
 
     <!-- Tabs inside client -->
     <mxCell id="tab1" value="홈" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="587" y="175" width="80" height="30" as="geometry" />
+      <mxGeometry x="487" y="175" width="100" height="30" as="geometry" />
     </mxCell>
     <mxCell id="tab2" value="레시피 탐색" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="677" y="175" width="90" height="30" as="geometry" />
+      <mxGeometry x="597" y="175" width="110" height="30" as="geometry" />
     </mxCell>
     <mxCell id="tab3" value="냉장고" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="777" y="175" width="80" height="30" as="geometry" />
+      <mxGeometry x="717" y="175" width="100" height="30" as="geometry" />
     </mxCell>
     <mxCell id="tab4" value="AI 챗봇" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="867" y="175" width="80" height="30" as="geometry" />
+      <mxGeometry x="827" y="175" width="100" height="30" as="geometry" />
     </mxCell>
     <mxCell id="tab5" value="설정" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="957" y="175" width="80" height="30" as="geometry" />
+      <mxGeometry x="937" y="175" width="100" height="30" as="geometry" />
     </mxCell>
 
     <!-- Arrow client to EC2 -->
-    <mxCell id="a1" value="HTTP REST" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;strokeColor=#6c8ebf;fontColor=#6c8ebf;fontStyle=1;" edge="1" parent="1" source="client" target="ec2">
+    <mxCell id="a1" value="HTTP REST" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.2;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;strokeColor=#6c8ebf;fontColor=#6c8ebf;fontStyle=1;" edge="1" parent="1" source="client" target="ec2">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
-    <!-- Arrow client to API Gateway (auth only) -->
-    <mxCell id="a2" value="Google 로그인" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;strokeColor=#d6b656;fontColor=#d6b656;fontStyle=1;" edge="1" parent="1" source="client" target="apigw">
+    <!-- Arrow client to API Gateway -->
+    <mxCell id="a2" value="Google 로그인" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.8;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;strokeColor=#d6b656;fontColor=#d6b656;fontStyle=1;" edge="1" parent="1" source="client" target="apigw">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- EC2 -->
     <mxCell id="ec2" value="&lt;b&gt;AWS EC2&lt;/b&gt;&lt;br&gt;Node.js / Express&lt;br&gt;EC2 주소 (PM2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;arcSize=8;" vertex="1" parent="1">
-      <mxGeometry x="200" y="310" width="240" height="80" as="geometry" />
+      <mxGeometry x="130" y="310" width="240" height="80" as="geometry" />
     </mxCell>
 
     <!-- EC2 API list -->
     <mxCell id="ec2api" value="/api/recipes&lt;br&gt;/api/fridge&lt;br&gt;/api/chat  /api/chat/history&lt;br&gt;/api/user&lt;br&gt;/api/youtube/search&lt;br&gt;/api/receipt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#82b366;fontSize=11;align=left;" vertex="1" parent="1">
-      <mxGeometry x="200" y="405" width="240" height="100" as="geometry" />
-    </mxCell>
-
-    <!-- API Gateway -->
-    <mxCell id="apigw" value="&lt;b&gt;AWS API Gateway&lt;/b&gt;&lt;br&gt;Lambda (인증 전용)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;arcSize=8;" vertex="1" parent="1">
-      <mxGeometry x="1020" y="310" width="220" height="60" as="geometry" />
-    </mxCell>
-
-    <!-- Lambda detail -->
-    <mxCell id="lambdaapi" value="POST /auth/google&lt;br&gt;GET  /auth/me" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
-      <mxGeometry x="1020" y="385" width="220" height="50" as="geometry" />
-    </mxCell>
-
-    <!-- Arrow API GW to Google OAuth -->
-    <mxCell id="a8" value="토큰 검증" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;strokeColor=#d6b656;fontColor=#d6b656;fontStyle=1;" edge="1" parent="1" source="apigw" target="google">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- Google OAuth -->
-    <mxCell id="google" value="&lt;b&gt;Google OAuth 2.0&lt;/b&gt;&lt;br&gt;소셜 로그인" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;arcSize=8;" vertex="1" parent="1">
-      <mxGeometry x="1020" y="510" width="220" height="60" as="geometry" />
+      <mxGeometry x="130" y="405" width="240" height="100" as="geometry" />
     </mxCell>
 
     <!-- EC2 to RDS -->
@@ -75,34 +55,59 @@
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
-    <!-- EC2 to Claude AI -->
-    <mxCell id="a6" value="AI 요청" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=11;strokeColor=#9673a6;fontColor=#9673a6;fontStyle=1;" edge="1" parent="1" source="ec2" target="claude">
+    <!-- EC2 to API Gateway (chat) -->
+    <mxCell id="a6" value="AI 챗봇 요청" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.6;entryDx=0;entryDy=0;fontSize=11;strokeColor=#9673a6;fontColor=#9673a6;fontStyle=1;" edge="1" parent="1" source="ec2" target="apigw">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- EC2 to YouTube -->
-    <mxCell id="a9" value="영상 검색" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=11;strokeColor=#82b366;fontColor=#82b366;fontStyle=1;" edge="1" parent="1" source="ec2" target="youtube">
+    <mxCell id="a9" value="영상 검색" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=11;strokeColor=#82b366;fontColor=#82b366;fontStyle=1;" edge="1" parent="1" source="ec2" target="youtube">
       <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- RDS -->
-    <mxCell id="rds" value="&lt;b&gt;AWS RDS (MySQL)&lt;/b&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="1">
-      <mxGeometry x="220" y="590" width="200" height="70" as="geometry" />
-    </mxCell>
-
-    <!-- RDS tables -->
-    <mxCell id="rdstables" value="유저  •  레시피  •  레시피 카테고리&lt;br&gt;레시피 재료  •  조리 순서&lt;br&gt;리뷰/좋아요  •  냉장고 재료&lt;br&gt;채팅 기록" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4d6;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="100" y="675" width="360" height="70" as="geometry" />
-    </mxCell>
-
-    <!-- Claude AI -->
-    <mxCell id="claude" value="&lt;b&gt;AWS Bedrock&lt;/b&gt;&lt;br&gt;Claude 3 Haiku (챗봇)&lt;br&gt;Amazon Titan (시맨틱 검색)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;arcSize=8;" vertex="1" parent="1">
-      <mxGeometry x="560" y="295" width="220" height="70" as="geometry" />
     </mxCell>
 
     <!-- YouTube API -->
     <mxCell id="youtube" value="&lt;b&gt;YouTube Data API&lt;/b&gt;&lt;br&gt;레시피 영상 검색" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;arcSize=8;" vertex="1" parent="1">
-      <mxGeometry x="560" y="390" width="220" height="60" as="geometry" />
+      <mxGeometry x="490" y="295" width="220" height="60" as="geometry" />
+    </mxCell>
+
+    <!-- RDS -->
+    <mxCell id="rds" value="&lt;b&gt;AWS RDS (MySQL)&lt;/b&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="150" y="590" width="200" height="70" as="geometry" />
+    </mxCell>
+
+    <!-- RDS tables -->
+    <mxCell id="rdstables" value="유저  •  레시피  •  레시피 카테고리&lt;br&gt;레시피 재료  •  조리 순서&lt;br&gt;리뷰/좋아요  •  냉장고 재료&lt;br&gt;채팅 기록" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4d6;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="50" y="675" width="360" height="70" as="geometry" />
+    </mxCell>
+
+    <!-- API Gateway -->
+    <mxCell id="apigw" value="&lt;b&gt;AWS API Gateway&lt;/b&gt;&lt;br&gt;Lambda (인증 / 챗봇)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;arcSize=8;" vertex="1" parent="1">
+      <mxGeometry x="980" y="310" width="240" height="60" as="geometry" />
+    </mxCell>
+
+    <!-- Lambda detail -->
+    <mxCell id="lambdaapi" value="POST /auth/google  •  GET /auth/me&lt;br&gt;POST /chat" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="980" y="385" width="240" height="50" as="geometry" />
+    </mxCell>
+
+    <!-- Arrow API GW to Google OAuth -->
+    <mxCell id="a8" value="토큰 검증" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;strokeColor=#d6b656;fontColor=#d6b656;fontStyle=1;" edge="1" parent="1" source="apigw" target="google">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- Arrow API GW to Bedrock -->
+    <mxCell id="a10" value="AI 호출" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;strokeColor=#9673a6;fontColor=#9673a6;fontStyle=1;" edge="1" parent="1" source="apigw" target="claude">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- Google OAuth -->
+    <mxCell id="google" value="&lt;b&gt;Google OAuth 2.0&lt;/b&gt;&lt;br&gt;소셜 로그인" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;arcSize=8;" vertex="1" parent="1">
+      <mxGeometry x="880" y="510" width="200" height="60" as="geometry" />
+    </mxCell>
+
+    <!-- AWS Bedrock -->
+    <mxCell id="claude" value="&lt;b&gt;AWS Bedrock&lt;/b&gt;&lt;br&gt;Claude 3 Haiku (챗봇)&lt;br&gt;Amazon Titan (시맨틱 검색)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;arcSize=8;" vertex="1" parent="1">
+      <mxGeometry x="1090" y="510" width="230" height="70" as="geometry" />
     </mxCell>
 
     <!-- Legend -->
