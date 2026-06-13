@@ -1,0 +1,131 @@
+import { StyleSheet } from "react-native";
+import { C } from "../colors";
+import common from "./common";
+
+export default StyleSheet.create({
+  ...common,
+  container: { flex: 1, backgroundColor: C.bg },
+  header: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16,
+    backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  appTitle: { fontSize: 22, fontWeight: "800", color: C.primary, letterSpacing: -0.5 },
+  appSubtitle: { marginTop: 3, fontSize: 13, color: C.textMuted },
+  chatWrap: {
+    flex: 1, marginHorizontal: 20, marginTop: 16, marginBottom: 16,
+    backgroundColor: C.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: "rgba(255,107,53,0.35)",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 10,
+    elevation: 3, overflow: "hidden",
+  },
+  chatMessages: { flex: 1 },
+  chatMsg: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
+  chatMsgAi: { justifyContent: "flex-start" },
+  chatMsgUser: { justifyContent: "flex-end" },
+  avatar: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: C.primaryLt, alignItems: "center", justifyContent: "center",
+  },
+  bubble: { maxWidth: "74%", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
+  bubbleAi: { backgroundColor: C.bg, borderBottomLeftRadius: 5 },
+  bubbleUser: { backgroundColor: C.primary, borderTopRightRadius: 5 },
+  bubbleText: { fontSize: 13, lineHeight: 20, color: C.text },
+  quickChipsRow: { flexDirection: "row", alignItems: "center", maxHeight: 44 },
+  quickChips: { flex: 1 },
+  clearHistoryBtn: {
+    paddingHorizontal: 10, paddingVertical: 8,
+    justifyContent: "center", alignItems: "center",
+  },
+  quickChip: {
+    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999,
+    borderWidth: 1, borderColor: "rgba(255,107,53,0.22)",
+    backgroundColor: "rgba(255,107,53,0.07)",
+  },
+  quickChipText: { fontSize: 12, fontWeight: "600", color: "#374151" },
+  inputBar: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    padding: 10, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.surface,
+  },
+  inputWrap: {
+    flex: 1, flexDirection: "row", alignItems: "center",
+    height: 40, borderRadius: 999, borderWidth: 1.5, borderColor: C.border,
+    backgroundColor: C.bg, overflow: "hidden",
+  },
+  inputIconBtn: { width: 36, alignItems: "center", justifyContent: "center" },
+  textInput: { flex: 1, fontSize: 13, color: C.text, paddingHorizontal: 4 },
+  sendBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: C.primary, alignItems: "center", justifyContent: "center",
+  },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  settingsSheet: {
+    backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    maxHeight: "80%",
+  },
+  settingsHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 4,
+  },
+  settingsTitle: { fontSize: 17, fontWeight: "700", color: C.text },
+  settingsBody: { padding: 20, paddingBottom: 40 },
+  settingsSectionTitle: { fontSize: 13, fontWeight: "700", color: C.text, marginBottom: 10 },
+  segmentRow: {
+    flexDirection: "row", backgroundColor: C.bg, borderRadius: 12,
+    padding: 3, borderWidth: 1.5, borderColor: C.border,
+  },
+  segmentBtn: { flex: 1, height: 36, alignItems: "center", justifyContent: "center", borderRadius: 9 },
+  segmentBtnActive: {
+    backgroundColor: C.surface,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
+  },
+  segmentBtnText: { fontSize: 13, fontWeight: "600", color: C.textSub },
+  segmentBtnTextActive: { color: C.primary },
+  ingrPickerWrap: {
+    borderTopWidth: 1, borderTopColor: C.border,
+    backgroundColor: C.bg, paddingBottom: 2,
+  },
+  ingrPickerLabel: {
+    fontSize: 11, fontWeight: "700", color: C.textMuted,
+    paddingHorizontal: 14, paddingTop: 6,
+    textTransform: "uppercase", letterSpacing: 0.3,
+  },
+  ingrChip: {
+    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999,
+    borderWidth: 1.5, borderColor: C.primary, backgroundColor: C.primaryLt,
+  },
+  ingrChipText: { fontSize: 12, fontWeight: "700", color: C.primary },
+  authSection: { marginBottom: 20 },
+  authName: { fontSize: 15, fontWeight: "700", color: C.text, marginBottom: 3 },
+  authEmail: { fontSize: 13, color: C.textSub, marginBottom: 16 },
+  nickSection: { marginBottom: 16 },
+  nickRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 6 },
+  nickValue: { fontSize: 14, color: C.text, fontWeight: "500" },
+  nickEditText: { fontSize: 13, color: C.primary, fontWeight: "600" },
+  nickEditRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
+  nickInput: {
+    flex: 1, height: 38, borderRadius: 8, borderWidth: 1.5, borderColor: C.border,
+    paddingHorizontal: 12, fontSize: 14, color: C.text, backgroundColor: C.bg,
+  },
+  nickSaveBtn: {
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 8, backgroundColor: C.primary,
+  },
+  nickSaveBtnText: { fontSize: 13, fontWeight: "700", color: "#fff" },
+  nickCancelText: { fontSize: 13, color: C.textSub, paddingVertical: 9 },
+  logoutBtn: {
+    borderWidth: 1, borderColor: C.border, borderRadius: 10,
+    paddingVertical: 11, alignItems: "center",
+  },
+  logoutBtnText: { fontSize: 14, fontWeight: "600", color: C.textSub },
+  googleBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 10, borderWidth: 1, borderColor: "#ddd", borderRadius: 12,
+    paddingVertical: 13, backgroundColor: C.surface,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
+    marginBottom: 20,
+  },
+  googleBtnIcon: { fontSize: 16, fontWeight: "800", color: "#4285F4" },
+  googleBtnText: { fontSize: 15, fontWeight: "600", color: C.text },
+  divider: { height: 1, backgroundColor: C.border, marginBottom: 20 },
+});
