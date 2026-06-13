@@ -1,9 +1,10 @@
 {
   "expo": {
-    "name": "fridgeApp",
-    "slug": "fridgeapp",
+    "name": "요리조리",
+    "slug": "yorijori",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.webp",
     "scheme": "fridgeapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -12,11 +13,10 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.webp",
         "backgroundColor": "#ffffff"
       },
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ],
@@ -37,6 +37,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e868cb90-826d-431c-868f-c9892e04fe96"
+      }
     }
   }
 }
