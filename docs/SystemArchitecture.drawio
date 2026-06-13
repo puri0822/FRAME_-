@@ -31,12 +31,12 @@
     </mxCell>
 
     <!-- Arrow client to EC2 -->
-    <mxCell id="a1" value="HTTP REST" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;" edge="1" parent="1" source="client" target="ec2">
+    <mxCell id="a1" value="HTTP REST" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;strokeColor=#6c8ebf;fontColor=#6c8ebf;fontStyle=1;" edge="1" parent="1" source="client" target="ec2">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- Arrow client to API Gateway (auth only) -->
-    <mxCell id="a2" value="Google 로그인" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;" edge="1" parent="1" source="client" target="apigw">
+    <mxCell id="a2" value="Google 로그인" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;strokeColor=#d6b656;fontColor=#d6b656;fontStyle=1;" edge="1" parent="1" source="client" target="apigw">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
@@ -61,7 +61,7 @@
     </mxCell>
 
     <!-- Arrow API GW to Google OAuth -->
-    <mxCell id="a8" value="토큰 검증" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;" edge="1" parent="1" source="apigw" target="google">
+    <mxCell id="a8" value="토큰 검증" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;strokeColor=#d6b656;fontColor=#d6b656;fontStyle=1;" edge="1" parent="1" source="apigw" target="google">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
@@ -71,17 +71,17 @@
     </mxCell>
 
     <!-- EC2 to RDS -->
-    <mxCell id="a3" value="SQL" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;" edge="1" parent="1" source="ec2" target="rds">
+    <mxCell id="a3" value="SQL" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=11;strokeColor=#b85450;fontColor=#b85450;fontStyle=1;" edge="1" parent="1" source="ec2" target="rds">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- EC2 to Claude AI -->
-    <mxCell id="a6" value="AI 요청 (Anthropic API)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=11;" edge="1" parent="1" source="ec2" target="claude">
+    <mxCell id="a6" value="AI 요청 (Anthropic API)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=11;strokeColor=#9673a6;fontColor=#9673a6;fontStyle=1;" edge="1" parent="1" source="ec2" target="claude">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
     <!-- EC2 to YouTube -->
-    <mxCell id="a9" value="영상 검색" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=11;" edge="1" parent="1" source="ec2" target="youtube">
+    <mxCell id="a9" value="영상 검색" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=11;strokeColor=#82b366;fontColor=#82b366;fontStyle=1;" edge="1" parent="1" source="ec2" target="youtube">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>
 
