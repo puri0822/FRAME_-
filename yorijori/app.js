@@ -40,11 +40,16 @@ const Router = (() => {
   const pages    = document.querySelectorAll('.page');
   const navItems = document.querySelectorAll('.nav-item');
 
-  let currentPage = null;
+  // 탭 바에 표시되는 최상위 페이지
+  const TAB_PAGES = new Set(['home', 'fridge', 'explore']);
+
+  let currentPage  = null;
+  let previousPage = null; // back() 에서 사용
 
   /**
-   * pageId('home' | 'fridge' | 'explore')에 해당하는 페이지로 전환.
-   * CSS transition(opacity + translateY)만 사용 — 깜빡임 없음.
+   * pageId에 해당하는 페이지로 전환.
+   * TAB_PAGES 에 없는 서브 페이지(add-ingredient 등)는
+   * 부모 탭 하이라이트를 그대로 유지하고 localStorage에 저장하지 않는다.
    */
   function navigateTo(pageId) {
     if (pageId === currentPage) return;
@@ -53,25 +58,32 @@ const Router = (() => {
     navItems.forEach(n => n.classList.remove('active'));
 
     const targetPage = document.getElementById(`page-${pageId}`);
-    const targetNav  = document.querySelector(`.nav-item[data-page="${pageId}"]`);
-
-    if (!targetPage || !targetNav) {
+    if (!targetPage) {
       console.warn(`[Router] 알 수 없는 페이지: "${pageId}"`);
       return;
     }
 
-    targetPage.classList.add('active');
-    targetNav.classList.add('active');
-    targetPage.scrollTop = 0;
-    currentPage = pageId;
-
-    // localStorage에 저장 — 브라우저를 닫았다 열어도 마지막 탭 유지
-    Storage.set('yorijori_tab', pageId);
-
-    // 홈으로 돌아올 때 냉장고 추천 갱신 (재료가 바뀌었을 수 있으므로)
-    if (pageId === 'home' && typeof Home !== 'undefined') {
-      Home.refreshFridgeRecos();
+    // 탭 페이지이면 해당 nav 활성화, 서브 페이지이면 이전 탭 nav 유지
+    if (TAB_PAGES.has(pageId)) {
+      document.querySelector(`.nav-item[data-page="${pageId}"]`)?.classList.add('active');
+      Storage.set('yorijori_tab', pageId);
+    } else {
+      const parentNav = document.querySelector(`.nav-item[data-page="${previousPage}"]`);
+      parentNav?.classList.add('active');
     }
+
+    targetPage.classList.add('active');
+    targetPage.scrollTop = 0;
+    previousPage = currentPage;
+    currentPage  = pageId;
+
+    if (pageId === 'explore' && typeof Explore !== 'undefined') {
+      Explore.refreshRecos();
+    }
+  }
+
+  function back() {
+    if (previousPage) navigateTo(previousPage);
   }
 
   function init() {
@@ -79,12 +91,11 @@ const Router = (() => {
       btn.addEventListener('click', () => navigateTo(btn.dataset.page));
     });
 
-    const VALID_PAGES = new Set(['home', 'fridge', 'explore']);
     const saved = Storage.get('yorijori_tab', 'home');
-    navigateTo(VALID_PAGES.has(saved) ? saved : 'home');
+    navigateTo(TAB_PAGES.has(saved) ? saved : 'home');
   }
 
-  return { init, navigateTo };
+  return { init, navigateTo, back };
 })();
 
 
@@ -177,6 +188,12 @@ const Fridge = (() => {
   /** 재료 배열. 각 항목: { id: number, name: string, category: string, expiry: string, count: number } */
   let items = [];
 
+  /** 냉장고 페이지에서 다중 선택된 재료 id 목록 */
+  let selectedIngredients = [];
+
+  /** 수정 바텀시트를 여는 함수 (init()에서 주입) */
+  let openEditSheet = null;
+
   /* ---------- 데이터 읽기/쓰기 ---------- */
 
   function load() {
@@ -225,6 +242,19 @@ const Fridge = (() => {
 
   function remove(id) {
     items = items.filter(i => i.id !== id);
+    // 삭제된 재료가 선택 목록에 있으면 함께 제거
+    const selIdx = selectedIngredients.indexOf(id);
+    if (selIdx !== -1) selectedIngredients.splice(selIdx, 1);
+    save();
+    render();
+    updateRecipeSearchBtn();
+  }
+
+  function update(id, count, expiry) {
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+    item.count  = Math.max(1, count);
+    item.expiry = expiry || '';
     save();
     render();
   }
@@ -234,6 +264,7 @@ const Fridge = (() => {
   function buildIngredientItem(item) {
     const li = document.createElement('li');
     li.className = 'ingredient-item';
+    if (selectedIngredients.includes(item.id)) li.classList.add('selected');
 
     const photo = document.createElement('div');
     photo.className = 'ingr-photo';
@@ -262,13 +293,41 @@ const Fridge = (() => {
     countBadge.className = 'ingr-count';
     countBadge.textContent = `${item.count ?? 1}개`;
 
+    const editBtn = document.createElement('button');
+    editBtn.className = 'ingr-edit-btn';
+    editBtn.setAttribute('aria-label', `${item.name} 수정`);
+    editBtn.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </svg>`;
+    editBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      openEditSheet?.(item);
+    });
+
     const removeBtn = document.createElement('button');
     removeBtn.className = 'remove-btn';
     removeBtn.innerHTML = '&times;';
     removeBtn.setAttribute('aria-label', `${item.name} 삭제`);
-    removeBtn.addEventListener('click', () => remove(item.id));
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      remove(item.id);
+    });
 
-    li.append(photo, body, countBadge, removeBtn);
+    // 카드 클릭 시 선택 토글 (삭제·수정 버튼 제외)
+    li.addEventListener('click', () => {
+      const idx = selectedIngredients.indexOf(item.id);
+      if (idx === -1) {
+        selectedIngredients.push(item.id);
+        li.classList.add('selected');
+      } else {
+        selectedIngredients.splice(idx, 1);
+        li.classList.remove('selected');
+      }
+      updateRecipeSearchBtn();
+    });
+
+    li.append(photo, body, countBadge, editBtn, removeBtn);
     return li;
   }
 
@@ -457,29 +516,73 @@ const Fridge = (() => {
     input.addEventListener('blur', () => setTimeout(hideDropdown, 150));
   }
 
-  /* ---------- 모달 ---------- */
+  /* ---------- 재료 카탈로그 데이터 ---------- */
 
-  function openModal() {
-    const modal = document.getElementById('add-ingr-modal');
-    if (!modal) return;
-    modal.hidden = false;
-    requestAnimationFrame(() => modal.classList.add('open'));
-    document.getElementById('modal-ingr-input')?.focus();
-  }
-
-  function closeModal() {
-    const modal = document.getElementById('add-ingr-modal');
-    if (!modal) return;
-    modal.classList.remove('open');
-    modal.addEventListener('transitionend', () => { modal.hidden = true; }, { once: true });
-    // 폼 초기화
-    const inp = document.getElementById('modal-ingr-input');
-    const exp = document.getElementById('modal-expiry-input');
-    const cnt = document.getElementById('modal-count-display');
-    if (inp) inp.value = '';
-    if (exp) exp.value = '';
-    if (cnt) cnt.textContent = '1';
-  }
+  const INGR_CATALOG = [
+    // 채소/과일
+    { name: '계란',       cat: '채소/과일' },
+    { name: '대파',       cat: '채소/과일' },
+    { name: '양파',       cat: '채소/과일' },
+    { name: '마늘',       cat: '채소/과일' },
+    { name: '생강',       cat: '채소/과일' },
+    { name: '감자',       cat: '채소/과일' },
+    { name: '당근',       cat: '채소/과일' },
+    { name: '배추',       cat: '채소/과일' },
+    { name: '무',         cat: '채소/과일' },
+    { name: '고추',       cat: '채소/과일' },
+    { name: '오이',       cat: '채소/과일' },
+    { name: '토마토',     cat: '채소/과일' },
+    { name: '버섯',       cat: '채소/과일' },
+    { name: '시금치',     cat: '채소/과일' },
+    { name: '깻잎',       cat: '채소/과일' },
+    { name: '애호박',     cat: '채소/과일' },
+    { name: '브로콜리',   cat: '채소/과일' },
+    { name: '파프리카',   cat: '채소/과일' },
+    { name: '상추',       cat: '채소/과일' },
+    { name: '쪽파',       cat: '채소/과일' },
+    // 육류/수산
+    { name: '돼지고기',   cat: '육류/수산' },
+    { name: '소고기',     cat: '육류/수산' },
+    { name: '닭고기',     cat: '육류/수산' },
+    { name: '베이컨',     cat: '육류/수산' },
+    { name: '스팸',       cat: '육류/수산' },
+    { name: '참치캔',     cat: '육류/수산' },
+    { name: '고추참치캔', cat: '육류/수산' },
+    { name: '어묵',       cat: '육류/수산' },
+    { name: '새우',       cat: '육류/수산' },
+    { name: '햄',         cat: '육류/수산' },
+    { name: '멸치',       cat: '육류/수산' },
+    // 유제품
+    { name: '두부',           cat: '유제품' },
+    { name: '슬라이스 치즈',  cat: '유제품' },
+    { name: '우유',           cat: '유제품' },
+    { name: '버터',           cat: '유제품' },
+    { name: '두유',           cat: '유제품' },
+    // 가공/편의점
+    { name: '밥',           cat: '가공/편의점' },
+    { name: '라면',         cat: '가공/편의점' },
+    { name: '컵라면',       cat: '가공/편의점' },
+    { name: '냉동 만두',    cat: '가공/편의점' },
+    { name: '냉동 채소',    cat: '가공/편의점' },
+    { name: '냉동 떡볶이',  cat: '가공/편의점' },
+    { name: '부침가루',     cat: '가공/편의점' },
+    { name: '밀가루',       cat: '가공/편의점' },
+    { name: '김',           cat: '가공/편의점' },
+    { name: '김치',         cat: '가공/편의점' },
+    { name: '묵은 김치',    cat: '가공/편의점' },
+    { name: '삼각김밥',     cat: '가공/편의점' },
+    // 양념
+    { name: '된장',     cat: '양념' },
+    { name: '고추장',   cat: '양념' },
+    { name: '간장',     cat: '양념' },
+    { name: '소금',     cat: '양념' },
+    { name: '설탕',     cat: '양념' },
+    { name: '참기름',   cat: '양념' },
+    { name: '식용유',   cat: '양념' },
+    { name: '마요네즈', cat: '양념' },
+    { name: '올리고당', cat: '양념' },
+    { name: '후추',     cat: '양념' },
+  ];
 
   /* ---------- 초기화 ---------- */
 
@@ -498,70 +601,384 @@ const Fridge = (() => {
       });
     });
 
-    /* 모달 열기 버튼 */
-    document.getElementById('open-add-ingr-btn')
-      ?.addEventListener('click', openModal);
+    /* ── 재료 추가 페이지 ── */
 
-    /* 모달 닫기 */
-    document.getElementById('add-ingr-close-btn')
-      ?.addEventListener('click', closeModal);
-    document.getElementById('add-ingr-modal')
-      ?.addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') closeModal();
+    // 뒤로가기
+    document.getElementById('add-ingr-back-btn')
+      ?.addEventListener('click', () => Router.back());
+
+    // ── 상태 ──
+    let catalogCat   = '전체';
+    let catalogSort  = '가나다';
+    let catalogQuery = '';
+
+    /** selectedIngredients: [{ name, image, count, expiry, cat }] */
+    let selectedIngredients = [];
+
+    const catalogEl   = document.getElementById('add-ingr-catalog');
+    const searchEl    = document.getElementById('add-ingr-search');
+    const sortEl      = document.getElementById('add-ingr-sort');
+    const selectedBar = document.getElementById('ingr-selected-bar');
+    const selectedLbl = document.getElementById('ingr-selected-label');
+
+    /* 카테고리별 태그 색상 */
+    const CAT_STYLE = {
+      '채소/과일':   { bg: 'rgba(22,163,74,0.1)',   color: '#16A34A' },
+      '육류/수산':   { bg: 'rgba(224,84,84,0.1)',    color: '#E05454' },
+      '유제품':      { bg: 'rgba(59,158,224,0.1)',   color: '#3B9EE0' },
+      '가공/편의점': { bg: 'rgba(255,107,53,0.1)',   color: '#FF6B35' },
+      '양념':        { bg: 'rgba(232,160,32,0.1)',   color: '#E8A020' },
+    };
+
+    /* 토스트 */
+    const toastWrap = document.createElement('div');
+    toastWrap.className = 'toast-wrap';
+    const toastEl = document.createElement('div');
+    toastEl.className = 'toast';
+    toastWrap.appendChild(toastEl);
+    (document.getElementById('app') || document.body).appendChild(toastWrap);
+
+    let toastTimer = null;
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
+    }
+
+    /* selectedIngredients 변경 후 UI 동기화 */
+    function syncSelectedBar() {
+      const n = selectedIngredients.length;
+      if (n === 0) {
+        selectedBar?.classList.add('hidden');
+      } else {
+        selectedBar?.classList.remove('hidden');
+        if (selectedLbl) selectedLbl.textContent = `${n}개 선택됨`;
+      }
+    }
+
+    /* 카드의 체크 표시를 selectedIngredients 기준으로 업데이트 */
+    function syncCardState(card, name) {
+      const isSelected = selectedIngredients.some(s => s.name === name);
+      card.classList.toggle('added', isSelected);
+      const existing = card.querySelector('.catalog-check');
+      if (isSelected && !existing) {
+        const check = document.createElement('span');
+        check.className = 'catalog-check';
+        check.setAttribute('aria-label', '선택됨');
+        check.textContent = '✓';
+        card.appendChild(check);
+      } else if (!isSelected && existing) {
+        existing.remove();
+      }
+    }
+
+    /* ── 바텀시트 ── */
+    const detailOverlay  = document.getElementById('ingr-detail-overlay');
+    const detailSheet    = document.getElementById('ingr-detail-sheet');
+    const detailExpiryEl = document.getElementById('detail-expiry');
+    let   detailItem     = null; // 현재 편집 중인 catalog item
+    let   detailCount    = 1;
+    let   detailCard     = null; // 연결된 카드 DOM
+
+    /** 오늘 날짜를 yyyy-mm-dd 형식으로 반환 */
+    function todayStr() {
+      const d  = new Date();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${d.getFullYear()}-${mm}-${dd}`;
+    }
+
+    // 바텀시트가 열릴 때 잠글 스크롤 컨테이너
+    // — 이 SPA에서 body가 아닌 .page 요소가 실제 스크롤 컨테이너
+    const pageScrollEl = document.getElementById('page-add-ingredient');
+
+    function lockScroll() {
+      if (pageScrollEl) pageScrollEl.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden'; // 추가 안전망 (일부 브라우저)
+    }
+
+    function unlockScroll() {
+      if (pageScrollEl) pageScrollEl.style.overflow = '';
+      document.body.style.overflow = '';        // 클린업
+    }
+
+    function openDetailSheet(item, card) {
+      detailItem  = item;
+      detailCard  = card;
+      detailCount = 1;
+
+      document.getElementById('ingr-detail-emoji').textContent =
+        getIngredientEmoji(item.name, item.cat);
+      document.getElementById('ingr-detail-name').textContent = item.name;
+      document.getElementById('ingr-detail-cat').textContent  = item.cat;
+      document.getElementById('detail-count-display').textContent = '1';
+      // 유통기한 기본값 = 오늘
+      if (detailExpiryEl) detailExpiryEl.value = todayStr();
+
+      detailOverlay.setAttribute('aria-hidden', 'false');
+      detailOverlay.classList.add('open');
+      lockScroll(); // 배경 스크롤 잠금
+    }
+
+    function closeDetailSheet() {
+      detailOverlay.classList.remove('open');
+      detailOverlay.setAttribute('aria-hidden', 'true');
+      unlockScroll(); // 배경 스크롤 복구 (클린업)
+      // 시트를 닫을 때는 카드 상태를 건드리지 않음 (취소 시 선택 안 된 상태 유지)
+      detailItem = null;
+      detailCard = null;
+    }
+
+    // 갯수 +/-
+    document.getElementById('detail-count-minus')?.addEventListener('click', () => {
+      if (detailCount > 1) {
+        detailCount--;
+        document.getElementById('detail-count-display').textContent = detailCount;
+      }
+    });
+    document.getElementById('detail-count-plus')?.addEventListener('click', () => {
+      detailCount++;
+      document.getElementById('detail-count-display').textContent = detailCount;
     });
 
-    /* 자동완성 — 모달 재료명 입력창 */
-    const modalInput = document.getElementById('modal-ingr-input');
-    if (modalInput) initAutocomplete(modalInput);
-
-    /* 유통기한 단축 버튼 (모달 내) */
-    const expiryInput = document.getElementById('modal-expiry-input');
-    document.querySelectorAll('#add-ingr-modal .expiry-shortcut-btn').forEach(btn => {
+    // 유통기한 단축 버튼
+    document.querySelectorAll('#ingr-detail-sheet .expiry-shortcut-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        if (!expiryInput) return;
         const days = parseInt(btn.dataset.days, 10);
-        const base = expiryInput.value ? new Date(expiryInput.value) : new Date();
+        const base = detailExpiryEl.value ? new Date(detailExpiryEl.value) : new Date();
         base.setDate(base.getDate() + days);
         const yyyy = base.getFullYear();
         const mm   = String(base.getMonth() + 1).padStart(2, '0');
         const dd   = String(base.getDate()).padStart(2, '0');
-        expiryInput.value = `${yyyy}-${mm}-${dd}`;
+        detailExpiryEl.value = `${yyyy}-${mm}-${dd}`;
       });
     });
 
-    /* 갯수 +/- */
-    let currentCount = 1;
-    const countDisplay = document.getElementById('modal-count-display');
-    document.getElementById('modal-count-minus')?.addEventListener('click', () => {
-      if (currentCount > 1) { currentCount--; if (countDisplay) countDisplay.textContent = currentCount; }
-    });
-    document.getElementById('modal-count-plus')?.addEventListener('click', () => {
-      currentCount++;
-      if (countDisplay) countDisplay.textContent = currentCount;
+    // 취소 버튼 — 선택하지 않고 시트 닫기 (카드 상태 변경 없음)
+    document.getElementById('detail-cancel-btn')?.addEventListener('click', closeDetailSheet);
+
+    // 선택 완료 버튼
+    document.getElementById('detail-confirm-btn')?.addEventListener('click', () => {
+      if (!detailItem) return;
+      const entry = {
+        name:   detailItem.name,
+        image:  getIngredientEmoji(detailItem.name, detailItem.cat),
+        cat:    detailItem.cat,
+        count:  detailCount,
+        expiry: detailExpiryEl?.value || '',
+      };
+      selectedIngredients.push(entry);
+      syncCardState(detailCard, detailItem.name);
+      syncSelectedBar();
+      closeDetailSheet();
+      showToast(`✓ ${entry.name} 선택됨`);
     });
 
-    /* 등록 버튼 */
-    function handleModalAdd() {
-      const name     = document.getElementById('modal-ingr-input')?.value || '';
-      const category = document.getElementById('modal-category-select')?.value || '일반';
-      const expiry   = document.getElementById('modal-expiry-input')?.value || '';
-      const ok = add(name, category, expiry, currentCount);
-      if (ok) {
-        currentCount = 1;
-        closeModal();
+    // 오버레이 배경 클릭 시 닫기
+    detailOverlay?.addEventListener('click', e => {
+      if (e.target === detailOverlay) closeDetailSheet();
+    });
+
+    // 냉장고에 추가 (확정 바 버튼)
+    document.getElementById('ingr-confirm-btn')?.addEventListener('click', () => {
+      selectedIngredients.forEach(s => add(s.name, s.cat, s.expiry, s.count));
+      const n = selectedIngredients.length;
+      selectedIngredients = [];
+      renderCatalog();        // 카드 상태 초기화
+      syncSelectedBar();
+      showToast(`✓ ${n}개 재료가 냉장고에 추가됐어요`);
+      setTimeout(() => Router.back(), 600);
+    });
+
+    /* 카탈로그 렌더링 */
+    function renderCatalog() {
+      if (!catalogEl) return;
+
+      let list = INGR_CATALOG.filter(item => {
+        const matchCat   = catalogCat === '전체' || item.cat === catalogCat;
+        const matchQuery = !catalogQuery || item.name.includes(catalogQuery);
+        return matchCat && matchQuery;
+      });
+
+      if (catalogSort === '가나다') {
+        list = [...list].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
       }
+
+      if (list.length === 0) {
+        catalogEl.innerHTML = '<p class="catalog-empty">검색 결과가 없어요 😅</p>';
+        return;
+      }
+
+      catalogEl.innerHTML = '';
+      list.forEach(item => {
+        const isSelected = selectedIngredients.some(s => s.name === item.name);
+        const emoji = getIngredientEmoji(item.name, item.cat);
+        const style = CAT_STYLE[item.cat] || { bg: 'rgba(230,126,94,0.1)', color: '#E67E5E' };
+
+        const card = document.createElement('button');
+        card.className = 'catalog-card' + (isSelected ? ' added' : '');
+        card.setAttribute('aria-label', `${item.name} ${isSelected ? '선택 취소' : '선택'}`);
+        card.innerHTML = `
+          <div class="catalog-img-wrap">${emoji}</div>
+          <div class="catalog-card-body">
+            <span class="catalog-name">${item.name}</span>
+            <span class="catalog-cat-tag"
+                  style="background:${style.bg};color:${style.color}">${item.cat}</span>
+          </div>
+          ${isSelected ? '<span class="catalog-check" aria-label="선택됨">✓</span>' : ''}
+        `;
+
+        card.addEventListener('click', () => {
+          const idx = selectedIngredients.findIndex(s => s.name === item.name);
+          if (idx !== -1) {
+            // 이미 선택된 재료 → 선택 취소
+            selectedIngredients.splice(idx, 1);
+            syncCardState(card, item.name);
+            syncSelectedBar();
+          } else {
+            // 미선택 재료 → 상세 입력 시트 열기
+            openDetailSheet(item, card);
+          }
+        });
+
+        catalogEl.appendChild(card);
+      });
     }
 
-    document.getElementById('modal-ingr-add-btn')?.addEventListener('click', handleModalAdd);
-    modalInput?.addEventListener('keydown', e => {
-      if (e.key !== 'Enter') return;
-      if (suppressNextAdd) { suppressNextAdd = false; return; }
-      handleModalAdd();
+    // 카테고리 탭
+    document.querySelectorAll('.add-ingr-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        catalogCat = tab.dataset.cat;
+        document.querySelectorAll('.add-ingr-tab').forEach(t =>
+          t.classList.toggle('active', t === tab)
+        );
+        renderCatalog();
+      });
+    });
+
+    // 검색
+    searchEl?.addEventListener('input', e => {
+      catalogQuery = e.target.value.trim();
+      renderCatalog();
+    });
+
+    // 정렬
+    sortEl?.addEventListener('change', e => {
+      catalogSort = e.target.value;
+      renderCatalog();
+    });
+
+    /** 카탈로그 카테고리를 설정하고 탭 UI도 동기화 */
+    function setCatalogCat(cat) {
+      catalogCat = cat;
+      document.querySelectorAll('.add-ingr-tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.cat === cat)
+      );
+      renderCatalog();
+    }
+
+    /* 재료 추가 버튼 → 전체 카탈로그로 이동 (기존 로직 유지) */
+    function handleGoToAddIngredient() {
+      Router.navigateTo('add-ingredient');
+      setCatalogCat('전체');
+    }
+
+    /* 편의점 음식 추가 버튼 → 가공/편의점 카테고리로 직행 */
+    function handleGoToConvenienceStore() {
+      Router.navigateTo('add-ingredient');
+      setCatalogCat('가공/편의점');
+    }
+
+    document.getElementById('open-add-ingr-btn')
+      ?.addEventListener('click', handleGoToAddIngredient);
+
+    document.getElementById('open-add-convenience-btn')
+      ?.addEventListener('click', handleGoToConvenienceStore);
+
+    /* ── 재료 수정 바텀시트 ── */
+    const editOverlay    = document.getElementById('fridge-edit-overlay');
+    const editExpiryEl   = document.getElementById('fridge-edit-expiry');
+    const editCountDisp  = document.getElementById('fridge-edit-count-display');
+    const fridgePage     = document.getElementById('page-fridge');
+    let editTargetId     = null;
+    let editCount        = 1;
+
+    function todayStr() {
+      const d  = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    function closeEdit() {
+      editOverlay?.classList.remove('open');
+      editOverlay?.setAttribute('aria-hidden', 'true');
+      if (fridgePage) fridgePage.style.overflow = '';
+    }
+
+    openEditSheet = function(item) {
+      editTargetId  = item.id;
+      editCount     = item.count ?? 1;
+
+      document.getElementById('fridge-edit-emoji').textContent = getIngredientEmoji(item.name, item.category);
+      document.getElementById('fridge-edit-name').textContent  = item.name;
+      document.getElementById('fridge-edit-cat').textContent   = item.category;
+      editCountDisp.textContent = editCount;
+      if (editExpiryEl) editExpiryEl.value = item.expiry || todayStr();
+
+      editOverlay?.setAttribute('aria-hidden', 'false');
+      editOverlay?.classList.add('open');
+      if (fridgePage) fridgePage.style.overflow = 'hidden';
+    };
+
+    document.getElementById('fridge-edit-count-minus')?.addEventListener('click', () => {
+      if (editCount > 1) { editCount--; editCountDisp.textContent = editCount; }
+    });
+    document.getElementById('fridge-edit-count-plus')?.addEventListener('click', () => {
+      editCount++; editCountDisp.textContent = editCount;
+    });
+
+    document.querySelectorAll('.fridge-edit-shortcut').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const days = parseInt(btn.dataset.days, 10);
+        const base = editExpiryEl?.value ? new Date(editExpiryEl.value) : new Date();
+        base.setDate(base.getDate() + days);
+        if (editExpiryEl) {
+          editExpiryEl.value =
+            `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}-${String(base.getDate()).padStart(2,'0')}`;
+        }
+      });
+    });
+
+    document.getElementById('fridge-edit-cancel-btn')?.addEventListener('click', closeEdit);
+
+    document.getElementById('fridge-edit-save-btn')?.addEventListener('click', () => {
+      if (editTargetId == null) return;
+      update(editTargetId, editCount, editExpiryEl?.value || '');
+      closeEdit();
+    });
+
+    // 배경 클릭으로 닫기
+    editOverlay?.addEventListener('click', e => {
+      if (e.target === editOverlay) closeEdit();
     });
   }
 
-  return { init };
+  /* ---------- 레시피 검색 버튼 ---------- */
+
+  function updateRecipeSearchBtn() {
+    const btn = document.getElementById('fridge-recipe-search-btn');
+    if (!btn) return;
+    btn.hidden = selectedIngredients.length === 0;
+  }
+
+  /** 현재 선택된 재료 이름 배열 반환 */
+  function getSelectedNames() {
+    return items
+      .filter(i => selectedIngredients.includes(i.id))
+      .map(i => i.name);
+  }
+
+  return { init, updateRecipeSearchBtn, getSelectedNames };
 })();
 
 
@@ -630,6 +1047,8 @@ const RECIPES = [
       '김으로 감싸고 참기름을 한 방울 떨어뜨리면 완성!',
     ],
     youtube_title: '참치마요 주먹밥 만들기 | 초간단 10분 레시피',
+    likes: 2418,
+    rating: 4.2,
   },
   {
     id: 2,
@@ -648,6 +1067,8 @@ const RECIPES = [
       '뚝배기에 담으면 더욱 분위기 있는 나베 완성!',
     ],
     youtube_title: '편의점 라면 나베 | 간단하지만 진짜 맛있는 혼밥 레시피',
+    likes: 1092,
+    rating: 3.9,
   },
   {
     id: 3,
@@ -667,6 +1088,8 @@ const RECIPES = [
       '불을 끄고 참기름을 한 방울 두르면 완성!',
     ],
     youtube_title: '냉장고 털이 볶음밥 | 자투리 재료로 만드는 황금 볶음밥',
+    likes: 5731,
+    rating: 4.8,
   },
   {
     id: 4,
@@ -686,6 +1109,8 @@ const RECIPES = [
       '한 김 식힌 후 먹기 좋게 썰면 완성!',
     ],
     youtube_title: '고추참치 계란말이 | 초보도 쉬운 밥도둑 반찬',
+    likes: 847,
+    rating: 3.7,
   },
   {
     id: 5,
@@ -703,6 +1128,8 @@ const RECIPES = [
       '마요네즈를 지그재그로 뿌리면 완성!',
     ],
     youtube_title: '떡볶이 치즈 덮밥 | 5분 완성 초간편 한 끼',
+    likes: 3256,
+    rating: 4.5,
   },
   {
     id: 6,
@@ -722,6 +1149,8 @@ const RECIPES = [
       '불을 끄고 참기름 한 방울로 마무리하면 완성!',
     ],
     youtube_title: '스팸 마늘종 볶음 | 밥 세 공기 각오하세요',
+    likes: 1604,
+    rating: 4.1,
   },
   {
     id: 7,
@@ -741,6 +1170,8 @@ const RECIPES = [
       '참기름 한 방울로 마무리하면 완성!',
     ],
     youtube_title: '두부 간장 조림 | 건강하고 맛있는 기본 반찬',
+    likes: 2973,
+    rating: 4.3,
   },
   {
     id: 8,
@@ -760,6 +1191,8 @@ const RECIPES = [
       '노릇하게 익으면 접시에 담아 완성!',
     ],
     youtube_title: '김치 치즈 부침개 | 바삭하고 쫄깃한 황금 레시피',
+    likes: 4187,
+    rating: 4.6,
   },
   {
     id: 9,
@@ -779,6 +1212,8 @@ const RECIPES = [
       '기호에 따라 파슬리를 뿌리면 서양식 감자 볶음 완성!',
     ],
     youtube_title: '감자 베이컨 볶음 | 집에서 만드는 브런치 레시피',
+    likes: 623,
+    rating: 3.6,
   },
   {
     id: 10,
@@ -797,7 +1232,144 @@ const RECIPES = [
       '삼각김밥을 그릇에 담고 된장국과 함께 먹으면 든든한 한 끼!',
     ],
     youtube_title: '삼각김밥 된장국 | 5분 만에 만드는 따뜻한 한 끼',
+    likes: 1341,
+    rating: 4.0,
   },
+];
+
+
+/* =========================================
+   레시피 리뷰 더미 데이터
+   ========================================= */
+const RECIPE_REVIEWS = {
+  1: [
+    { user: '김민지', rating: 5, photo: '🍙', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '아이들이 너무 좋아해서 자주 만들어요. 참기름 한 방울이 진짜 포인트예요!' },
+    { user: '이준호', rating: 4, photo: '😋', grad: 'linear-gradient(135deg,#FEF3C7,#FDE68A)', text: '간단하고 맛있어요. 다음엔 명란 버전으로도 도전해볼게요.' },
+    { user: '박수아', rating: 5, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '도시락으로 싸갔더니 친구들이 레시피 달라고 난리였어요!' },
+  ],
+  2: [
+    { user: '최현우', rating: 4, photo: '🍜', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '혼밥할 때 최고예요. 어묵을 듬뿍 넣으니 더 맛있었어요.' },
+    { user: '정나연', rating: 3, photo: '🥚', grad: 'linear-gradient(135deg,#FFF7ED,#FED7AA)', text: '생각보다 짤 수 있으니 스프 양 조절이 필요해요.' },
+    { user: '강지민', rating: 5, photo: '🔥', grad: 'linear-gradient(135deg,#FFF1F2,#FFE4E6)', text: '야식으로 이만한 게 없어요! 치즈 추가하면 금상첨화.' },
+  ],
+  3: [
+    { user: '윤서현', rating: 5, photo: '🍳', grad: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', text: '볶음밥은 이 레시피가 정석인 것 같아요. 간장 둘러주는 타이밍이 핵심!' },
+    { user: '임도현', rating: 5, photo: '🌶️', grad: 'linear-gradient(135deg,#FFF1F2,#FECDD3)', text: '냉장고 정리도 되고 맛도 있고 일석이조예요. 자주 해먹어요.' },
+    { user: '한소희', rating: 4, photo: '🥬', grad: 'linear-gradient(135deg,#ECFDF5,#BBF7D0)', text: '스크램블 단계가 약간 어렵지만 맛은 최고예요!' },
+  ],
+  4: [
+    { user: '오지훈', rating: 4, photo: '🥚', grad: 'linear-gradient(135deg,#FFF7ED,#FFEDD5)', text: '고추참치 한 캔이면 충분해요. 촉촉하게 말리는 게 포인트.' },
+    { user: '신예린', rating: 3, photo: '🍱', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '처음엔 잘 안 말렸는데 두 번째엔 성공! 연습이 필요해요.' },
+    { user: '백지우', rating: 5, photo: '🌿', grad: 'linear-gradient(135deg,#FFFBEB,#FDE68A)', text: '밥도둑이 따로 없어요. 쪽파를 많이 넣을수록 더 맛있어요!' },
+  ],
+  5: [
+    { user: '류하은', rating: 5, photo: '🍱', grad: 'linear-gradient(135deg,#FFF1F2,#FECDD3)', text: '냉동 떡볶이로 이렇게 맛있는 게 되다니! 치즈 녹이는 순간 감동.' },
+    { user: '조민재', rating: 4, photo: '🧀', grad: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', text: '간단하고 빠르게 만들 수 있어서 자취생 필수 레시피예요.' },
+    { user: '서지유', rating: 5, photo: '🌶️', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '마요네즈 위에 청양고추 올리면 매콤달콤 최고 조합!' },
+  ],
+  6: [
+    { user: '문서준', rating: 5, photo: '🥩', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '스팸을 기름 없이 굽는 게 포인트예요. 노릇하게 구워야 제맛!' },
+    { user: '권지아', rating: 4, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#BBF7D0)', text: '마늘종이 아삭아삭해서 식감이 너무 좋아요. 밥 두 공기 먹었어요.' },
+    { user: '남현준', rating: 4, photo: '🍚', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '올리고당 대신 꿀을 넣어봤는데 더 맛있었어요!' },
+  ],
+  7: [
+    { user: '안지현', rating: 5, photo: '🥬', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '다이어트 중에 발견한 최고의 레시피예요. 포만감도 높아요.' },
+    { user: '황도윤', rating: 5, photo: '🌿', grad: 'linear-gradient(135deg,#FFFBEB,#FDE68A)', text: '두부를 단단하게 굽는 게 핵심이에요. 국물이 반으로 줄면 꺼내면 돼요!' },
+    { user: '송유진', rating: 4, photo: '🍱', grad: 'linear-gradient(135deg,#FFF1F2,#FFE4E6)', text: '고춧가루 좀 더 넣으니 매콤해서 더 맛있었어요. 밥반찬으로 딱이에요.' },
+  ],
+  8: [
+    { user: '전하린', rating: 5, photo: '🧀', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '치즈가 녹으면서 김치의 매운맛이 중화되는 게 신기해요. 완벽해요!' },
+    { user: '김태양', rating: 5, photo: '🌶️', grad: 'linear-gradient(135deg,#FFF1F2,#FECDD3)', text: '묵은 김치로 하면 훨씬 맛있어요. 반죽이 얇을수록 바삭해요.' },
+    { user: '이채원', rating: 4, photo: '🍳', grad: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', text: '겉은 바삭 속은 쫄깃해요. 치즈는 2장 넣는 게 더 맛있는 것 같아요!' },
+  ],
+  9: [
+    { user: '박세진', rating: 4, photo: '🥔', grad: 'linear-gradient(135deg,#FFFBEB,#FDE68A)', text: '버터 향이 정말 좋아요. 감자는 얇게 썰어야 골고루 익어요.' },
+    { user: '최아름', rating: 3, photo: '🥓', grad: 'linear-gradient(135deg,#FFF7ED,#FEE2D5)', text: '맛은 있는데 감자 익히는 시간이 생각보다 길어요. 약불이 포인트예요.' },
+    { user: '윤민호', rating: 4, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#BBF7D0)', text: '브런치로 딱이에요! 파슬리 뿌리면 카페 느낌 나서 좋았어요.' },
+  ],
+  10: [
+    { user: '정소윤', rating: 4, photo: '🍵', grad: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', text: '10분 만에 만들었는데 진짜 된장국 느낌이에요. 간이 딱 맞아요.' },
+    { user: '홍준서', rating: 4, photo: '🌿', grad: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)', text: '편의점 재료로 이런 퀄리티가 나오다니 신기해요. 자취생 강추!' },
+    { user: '김다은', rating: 5, photo: '🍙', grad: 'linear-gradient(135deg,#FFF7ED,#FFEDD5)', text: '삼각김밥이 국물에 녹아서 밥이 자연스럽게 말려요. 이거 완전 꿀팁!' },
+  ],
+};
+
+/* =========================================
+   레시피 텍스트 리뷰 더미 데이터
+   ========================================= */
+const RECIPE_TEXT_REVIEWS = {
+  1: [
+    { user: '노을빛주방',  rating: 4, date: '2025.11.02', text: '생각보다 훨씬 간단해요. 밥이 따뜻할 때 바로 만들어야 잘 뭉쳐져요.' },
+    { user: '혼밥러v',    rating: 5, date: '2025.10.28', text: '참기름 넣으니까 고급진 맛이 나요. 김을 가위로 잘라 감싸면 더 편해요.' },
+    { user: '자취9년차',  rating: 4, date: '2025.10.15', text: '마요네즈 양 조절이 포인트예요. 적게 넣으면 퍽퍽하고 많으면 느끼해요.' },
+    { user: '쿡쿡이',     rating: 3, date: '2025.09.30', text: '처음 해봤는데 모양 잡기가 좀 어렵네요. 맛은 합격점이에요!' },
+  ],
+  2: [
+    { user: '야식킹',     rating: 5, date: '2025.11.05', text: '밤에 혼자 먹기 딱 좋아요. 어묵 넉넉히 넣으면 진짜 나베 느낌!' },
+    { user: '컵라면탈출', rating: 3, date: '2025.10.22', text: '스프 반만 넣는 게 나아요. 두부는 미리 한 번 구우면 식감이 더 좋아요.' },
+    { user: '자취새내기',  rating: 4, date: '2025.10.09', text: '재료비가 거의 안 들어서 좋아요. 대파 넣는 타이밍을 마지막에 해야 아삭해요.' },
+    { user: 'ramen_lover', rating: 4, date: '2025.09.18', text: '계란 반숙 맞추기가 살짝 어렵지만 완성되면 완전 맛있어요!' },
+  ],
+  3: [
+    { user: '냉장고털이왕', rating: 5, date: '2025.11.08', text: '이 레시피 알고 나서 찬밥 버린 적이 없어요. 간장 타이밍이 진짜 핵심이에요.' },
+    { user: '매일볶음밥',   rating: 5, date: ''           + '2025.10.31', text: '팬 충분히 달구는 게 제일 중요해요. 연기 날 정도로 달궈야 볶음밥 특유의 향이 나요.' },
+    { user: '요리초보졸업', rating: 4, date: '2025.10.19', text: '냉동채소 대신 신선한 야채 썰어 넣으니 훨씬 맛있었어요.' },
+    { user: '주부9단',      rating: 5, date: '2025.10.03', text: '스크램블 단계에서 버터 살짝 더 넣으면 고소함이 두 배예요!' },
+  ],
+  4: [
+    { user: '반찬요정',   rating: 4, date: '2025.11.01', text: '고추참치 한 캔이면 양이 딱 맞아요. 약불로 천천히 말아야 터지지 않아요.' },
+    { user: '도시락쌤',   rating: 5, date: '2025.10.26', text: '도시락 단골 메뉴가 됐어요. 한 번에 두 줄 만들어서 냉장 보관해요.' },
+    { user: '계란요리전문', rating: 3, date: '2025.10.13', text: '처음엔 계란이 터져서 실패했어요. 불 세기 조절이 관건이에요.' },
+    { user: '밥도둑사냥꾼', rating: 5, date: '2025.09.27', text: '이거 먹고 밥 두 공기 뚝딱했어요. 쪽파 넉넉히 넣을수록 향이 좋아요!' },
+  ],
+  5: [
+    { user: '편의점셰프',   rating: 5, date: '2025.11.06', text: '냉동 떡볶이 브랜드마다 맛이 달라서 달달한 걸로 고르는 게 포인트예요.' },
+    { user: '자취 3년',     rating: 4, date: '2025.10.29', text: '치즈 두 장 넣으면 더 진해요. 마요네즈 격자 무늬로 뿌리면 예쁘게 나와요.' },
+    { user: '혼밥마스터',   rating: 5, date: '2025.10.16', text: '10분 안에 완성되는 퀄리티가 아니에요. 진짜 식당 수준이에요!' },
+    { user: 'cheesy_cook',  rating: 4, date: '2025.10.04', text: '고추장 한 숟갈 추가하면 더 맛있어요. 매콤달콤 조합이 최고예요.' },
+  ],
+  6: [
+    { user: '스팸러버',     rating: 5, date: '2025.11.03', text: '스팸을 기름 없이 굽는 게 처음엔 낯설었는데 훨씬 바삭하게 나와요.' },
+    { user: '반찬 블로거',  rating: 4, date: '2025.10.21', text: '마늘종은 살짝 아삭한 정도가 딱 좋아요. 너무 오래 볶으면 흐물해져요.' },
+    { user: '밑반찬전문가', rating: 4, date: '2025.10.08', text: '소스 비율 1:1:1이 황금 비율 맞아요. 달달하고 짭짤한 게 딱이에요.' },
+    { user: 'kfood_daily',  rating: 5, date: '2025.09.25', text: '만들어서 3일 냉장 보관해도 맛 유지돼요. 밑반찬으로 최고예요!' },
+  ],
+  7: [
+    { user: '다이어터',     rating: 5, date: '2025.11.07', text: '칼로리 낮으면서 이렇게 맛있는 반찬은 처음이에요. 단백질도 충분해요.' },
+    { user: '헬시라이프',   rating: 5, date: '2025.10.30', text: '두부 물기 제거가 핵심이에요. 꼭 키친타월로 꾹꾹 눌러줘야 해요.' },
+    { user: '식단관리중',   rating: 4, date: '2025.10.17', text: '간장 양을 레시피보다 살짝 줄였는데 더 담백해서 좋았어요.' },
+    { user: '두부요리탐구', rating: 4, date: '2025.10.05', text: '대파 대신 청양고추 올리면 매콤한 버전이 돼요. 이게 더 맛있어요!' },
+  ],
+  8: [
+    { user: '김치요리왕',   rating: 5, date: '2025.11.04', text: '묵은 김치 버리려다 이 레시피 보고 살렸어요. 진짜 맛있어요!' },
+    { user: '부침개장인',   rating: 5, date: '2025.10.23', text: '반죽 두께를 얇게 할수록 바삭해요. 치즈는 뒤집은 직후 올려야 잘 녹아요.' },
+    { user: '주말요리어',   rating: 4, date: '2025.10.11', text: '막걸리랑 먹으면 궁합이 완벽해요. 주말 점심으로 자주 만들어요.' },
+    { user: 'kimchi_fan',   rating: 5, date: '2025.09.29', text: '냉장고에 남은 묵은 김치 처리에 이만한 레시피가 없어요!' },
+  ],
+  9: [
+    { user: '감자요리덕후', rating: 4, date: '2025.11.02', text: '감자 두께가 균일해야 골고루 익어요. 채칼 쓰는 게 편해요.' },
+    { user: '브런치카페',   rating: 4, date: '2025.10.25', text: '버터 넉넉히 써야 고소함이 살아나요. 소금은 마지막에 넣어야 해요.' },
+    { user: '아침요리왕',   rating: 3, date: '2025.10.12', text: '감자가 잘 익는지 확인하면서 볶아야 해요. 타이밍 잡는 게 처음엔 어려워요.' },
+    { user: '홈카페_cook',  rating: 5, date: '2025.10.01', text: '로즈마리 살짝 올리면 레스토랑 느낌 나요. 강력 추천이에요!' },
+  ],
+  10: [
+    { user: '편의점고수',   rating: 4, date: '2025.11.05', text: '냉동 삼각김밥 말고 일반 삼각김밥도 잘 어울려요. 국물이 진해져서 좋아요.' },
+    { user: '자취끝판왕',   rating: 5, date: '2025.10.27', text: '5분 만에 이런 된장국이 나온다니 신기해요. 멸치다시마 우리는 게 진짜 중요해요.' },
+    { user: '국물요리팬',   rating: 4, date: '2025.10.14', text: '두부 넉넉히 넣으면 더 든든해요. 대파는 마지막에 넣어야 향이 살아요.' },
+    { user: '혼밥가이드',   rating: 5, date: '2025.09.28', text: '아침마다 해먹고 있어요. 국물이 진하고 깔끔해서 속이 편해요!' },
+  ],
+};
+
+/* =========================================
+   SNS 트렌딩 데이터
+   ========================================= */
+const TREND_DATA = [
+  { recipeId: 3,  count: '3,241', tags: ['#오늘뭐먹지', '#간편한식'] },
+  { recipeId: 1,  count: '2,847', tags: ['#SNS화제',   '#냉털볶']   },
+  { recipeId: 8,  count: '1,923', tags: ['#집밥',       '#김치요리'] },
+  { recipeId: 5,  count: '1,520', tags: ['#편의점요리', '#5분완성']  },
+  { recipeId: 7,  count: '1,108', tags: ['#다이어트',   '#헬시푸드'] },
+  { recipeId: 2,  count:   '987', tags: ['#야식',       '#간식']     },
 ];
 
 
@@ -809,10 +1381,11 @@ const Explore = (() => {
 
   // 숫자 타입만 허용하여 타입 불일치 방지
   const rawFavs = Storage.get(FAV_KEY, []);
-  let favorites      = new Set(Array.isArray(rawFavs) ? rawFavs.filter(Number.isFinite) : []);
-  let showFavOnly    = false;
-  let query          = '';
-  let activeCategory = '전체';
+  let favorites        = new Set(Array.isArray(rawFavs) ? rawFavs.filter(Number.isFinite) : []);
+  let showFavOnly      = false;
+  let query            = '';
+  let activeCategory   = '전체';
+  let fridgeIngredients = []; // 냉장고 다중 선택으로 전달된 재료 이름 목록
 
   /* RECIPES에 있는 카테고리 목록 (삽입 순서 유지, 중복 제거) */
   const CATEGORIES_LIST = ['전체', ...new Set(RECIPES.map(r => r.category).filter(Boolean))];
@@ -852,7 +1425,7 @@ const Explore = (() => {
 
   function getFiltered() {
     const q = query.toLowerCase();
-    return RECIPES.filter(r => {
+    let filtered = RECIPES.filter(r => {
       const matchSearch = !q
         || r.name.toLowerCase().includes(q)
         || r.ingredients.some(i => i.toLowerCase().includes(q));
@@ -860,6 +1433,51 @@ const Explore = (() => {
       const matchCat = activeCategory === '전체' || r.category === activeCategory;
       return matchSearch && matchFav && matchCat;
     });
+
+    if (fridgeIngredients.length > 0) {
+      const lower = fridgeIngredients.map(n => n.toLowerCase());
+
+      // 선택 재료 중 하나라도 포함하는 레시피만 남김
+      filtered = filtered.filter(r =>
+        r.ingredients.some(i => {
+          const il = i.toLowerCase();
+          return lower.some(n => il.includes(n) || n.includes(il));
+        })
+      );
+
+      // 매칭 재료 수 기준 내림차순 정렬 (많이 일치할수록 앞으로)
+      filtered.sort((a, b) => {
+        const count = r =>
+          r.ingredients.filter(i => {
+            const il = i.toLowerCase();
+            return lower.some(n => il.includes(n) || n.includes(il));
+          }).length;
+        return count(b) - count(a);
+      });
+    }
+
+    return filtered;
+  }
+
+  /** 냉장고에서 선택된 재료 이름으로 탐색 페이지 필터 설정 */
+  function filterByIngredients(names) {
+    fridgeIngredients = names.slice();
+    // 기존 필터 초기화
+    query = '';
+    activeCategory = '전체';
+    showFavOnly = false;
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) searchInput.value = '';
+    document.getElementById('explore-search-wrap')?.classList.remove('open');
+    renderCategoryChips();
+    render();
+  }
+
+  /** 재료 필터 해제 */
+  function clearFridgeFilter() {
+    fridgeIngredients = [];
+    renderCategoryChips();
+    render();
   }
 
   /* ---------- 카테고리 칩 렌더링 ---------- */
@@ -868,15 +1486,47 @@ const Explore = (() => {
     const bar = document.getElementById('category-chips-bar');
     if (!bar) return;
     bar.innerHTML = '';
-    CATEGORIES_LIST.forEach(cat => {
+
+    // 전체
+    const allBtn = document.createElement('button');
+    allBtn.className = `category-chip${activeCategory === '전체' && !showFavOnly ? ' active' : ''}`;
+    allBtn.setAttribute('role', 'tab');
+    allBtn.setAttribute('aria-selected', String(activeCategory === '전체' && !showFavOnly));
+    allBtn.textContent = '전체';
+    allBtn.addEventListener('click', () => {
+      if (activeCategory === '전체' && !showFavOnly) return;
+      activeCategory = '전체';
+      showFavOnly = false;
+      renderCategoryChips();
+      render();
+    });
+    bar.appendChild(allBtn);
+
+    // 즐겨찾기
+    const favBtn = document.createElement('button');
+    favBtn.className = `category-chip fav-chip${showFavOnly ? ' active' : ''}`;
+    favBtn.setAttribute('role', 'tab');
+    favBtn.setAttribute('aria-selected', String(showFavOnly));
+    favBtn.innerHTML = `<svg viewBox="0 0 24 24" width="11" height="11" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="${showFavOnly ? 'currentColor' : 'none'}" stroke="currentColor" style="flex-shrink:0"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>즐겨찾기`;
+    favBtn.addEventListener('click', () => {
+      showFavOnly = !showFavOnly;
+      if (showFavOnly) activeCategory = '전체';
+      renderCategoryChips();
+      render();
+    });
+    bar.appendChild(favBtn);
+
+    // 카테고리
+    CATEGORIES_LIST.filter(c => c !== '전체').forEach(cat => {
       const btn = document.createElement('button');
-      btn.className = `category-chip${cat === activeCategory ? ' active' : ''}`;
+      btn.className = `category-chip${cat === activeCategory && !showFavOnly ? ' active' : ''}`;
       btn.setAttribute('role', 'tab');
-      btn.setAttribute('aria-selected', String(cat === activeCategory));
+      btn.setAttribute('aria-selected', String(cat === activeCategory && !showFavOnly));
       btn.textContent = cat;
       btn.addEventListener('click', () => {
-        if (activeCategory === cat) return;
+        if (activeCategory === cat && !showFavOnly) return;
         activeCategory = cat;
+        showFavOnly = false;
         renderCategoryChips();
         render();
       });
@@ -904,9 +1554,18 @@ const Explore = (() => {
     const body = document.createElement('div');
     body.className = 'explore-card-body';
 
+    const nameRow = document.createElement('div');
+    nameRow.className = 'explore-card-name-row';
+
     const nameEl = document.createElement('h3');
     nameEl.className = 'explore-card-name';
     nameEl.textContent = recipe.name;
+
+    const ratingEl = document.createElement('span');
+    ratingEl.className = 'explore-card-rating';
+    ratingEl.innerHTML = `<svg class="rating-star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${(recipe.rating ?? 0).toFixed(1)}`;
+
+    nameRow.append(nameEl, ratingEl);
 
     const ingrEl = document.createElement('p');
     ingrEl.className = 'explore-card-ingredients';
@@ -925,7 +1584,7 @@ const Explore = (() => {
     diffBadge.style.setProperty('--diff-color', DIFF_COLOR[recipe.difficulty] || '#888');
 
     badges.append(timeBadge, diffBadge);
-    body.append(nameEl, ingrEl, badges);
+    body.append(nameRow, ingrEl, badges);
     main.append(thumb, body);
 
     /* 하트 버튼 */
@@ -940,10 +1599,18 @@ const Explore = (() => {
       toggleFavorite(recipe.id);
     });
 
+    const heartCount = document.createElement('span');
+    heartCount.className = 'heart-count';
+    heartCount.textContent = (recipe.likes ?? 0).toLocaleString('ko-KR');
+
+    const heartWrap = document.createElement('div');
+    heartWrap.className = 'heart-wrap';
+    heartWrap.append(heartBtn, heartCount);
+
     // 카드 클릭 → 상세 모달 (하트 버튼은 stopPropagation으로 제외됨)
     article.addEventListener('click', () => RecipeModal.open(recipe.id));
 
-    article.append(main, heartBtn);
+    article.append(main, heartWrap);
     return article;
   }
 
@@ -959,15 +1626,136 @@ const Explore = (() => {
 
     if (countEl) countEl.textContent = `${filtered.length}개`;
 
+    // 냉장고 재료 필터 배너
+    const banner = document.getElementById('fridge-filter-banner');
+    if (banner) {
+      if (fridgeIngredients.length > 0) {
+        banner.hidden = false;
+        // 재료 칩 목록 갱신
+        const chipsEl = banner.querySelector('.fridge-filter-chips');
+        if (chipsEl) {
+          chipsEl.innerHTML = '';
+          fridgeIngredients.forEach(name => {
+            const chip = document.createElement('span');
+            chip.className = 'fridge-filter-chip';
+            chip.textContent = name;
+            chipsEl.appendChild(chip);
+          });
+        }
+      } else {
+        banner.hidden = true;
+      }
+    }
+
     if (filtered.length === 0) {
-      list.appendChild(showFavOnly
-        ? createEmptyState('🤍', '즐겨찾기한 레시피가 없어요', '레시피의 ♡ 버튼을 눌러\n추가해 보세요!')
-        : createEmptyState('🔍', '검색 결과가 없어요', '다른 키워드로 검색해 보세요')
-      );
+      const emptyMsg = fridgeIngredients.length > 0
+        ? createEmptyState('🧊', '일치하는 레시피가 없어요', '다른 재료를 선택하거나 필터를 해제해 보세요')
+        : showFavOnly
+          ? createEmptyState('🤍', '즐겨찾기한 레시피가 없어요', '레시피의 ♡ 버튼을 눌러\n추가해 보세요!')
+          : createEmptyState('🔍', '검색 결과가 없어요', '다른 키워드로 검색해 보세요');
+      list.appendChild(emptyMsg);
       return;
     }
 
     filtered.forEach(r => list.appendChild(buildCard(r)));
+  }
+
+  /* ---------- 내 재료 기반 추천 카드 ---------- */
+
+  function buildRecoCard(recipe, myIngredients) {
+    const card = document.createElement('div');
+    card.className = 'reco-card reco-card--compact';
+
+    const visual = document.createElement('div');
+    visual.className = 'reco-card-visual';
+
+    const emojiEl = document.createElement('div');
+    emojiEl.className = 'reco-card-emoji';
+    emojiEl.textContent = recipe.emoji;
+
+    const bookmarkBtn = document.createElement('button');
+    bookmarkBtn.className = `reco-card-bookmark${favorites.has(recipe.id) ? ' active' : ''}`;
+    bookmarkBtn.setAttribute('aria-label', '즐겨찾기');
+    bookmarkBtn.innerHTML = `<svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+    </svg>`;
+    bookmarkBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleFavorite(recipe.id);
+      bookmarkBtn.classList.toggle('active', favorites.has(recipe.id));
+    });
+
+    const ownedIngrs = recipe.ingredients.filter(ing => myIngredients.has(ing.toLowerCase()));
+    const matchBadge = document.createElement('div');
+    matchBadge.className = 'reco-match-badge';
+    matchBadge.textContent = `${ownedIngrs.slice(0, 2).join(', ')} 포함 🌱`;
+
+    visual.append(emojiEl, bookmarkBtn, matchBadge);
+
+    const info = document.createElement('div');
+    info.className = 'reco-card-info';
+
+    const name = document.createElement('div');
+    name.className = 'reco-card-name';
+    name.textContent = recipe.name;
+
+    const meta = document.createElement('div');
+    meta.className = 'reco-card-meta';
+    const diffColor = DIFF_COLOR[recipe.difficulty] || '#888';
+    meta.innerHTML = `<span>⏱️ ${recipe.time}분</span><span class="reco-meta-sep">|</span><span style="color:${diffColor}">${recipe.difficulty}</span><span class="reco-meta-sep">|</span><span class="reco-card-rating-inline"><svg viewBox="0 0 24 24" class="rating-star rating-star--sm"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${(recipe.rating ?? 0).toFixed(1)}</span>`;
+
+    info.append(name, meta);
+
+    const ownedSet = new Set(ownedIngrs.map(i => i.toLowerCase()));
+    const missingKey = recipe.keyIngredients.filter(ing => !ownedSet.has(ing.toLowerCase()));
+    if (missingKey.length > 0) {
+      const hint = document.createElement('div');
+      hint.className = 'reco-card-hint';
+      hint.textContent = missingKey.length === 1
+        ? `${missingKey[0]}만 있으면 바로 완성!`
+        : `${missingKey.slice(0, 2).join(', ')} 추가하면 완성!`;
+      info.appendChild(hint);
+    }
+
+    card.append(visual, info);
+    card.addEventListener('click', () => RecipeModal.open(recipe.id));
+    return card;
+  }
+
+  function refreshRecos() {
+    const strip = document.getElementById('explore-reco-strip');
+    if (!strip) return;
+    strip.innerHTML = '';
+
+    const fridgeData    = Storage.get('yorijori_ingredients', []);
+    const myIngredients = new Set(
+      fridgeData.map(i => (typeof i === 'string' ? i : i.name).toLowerCase())
+    );
+
+    if (myIngredients.size === 0) {
+      strip.appendChild(createEmptyState(
+        '🧊', '냉장고가 비어있어요', '냉장고 탭에서 재료를 추가하면\n맞춤 레시피를 추천해 드려요!'
+      ));
+      return;
+    }
+
+    const scored = RECIPES
+      .map(r => ({
+        ...r,
+        matchCount: r.ingredients.filter(ing => myIngredients.has(ing.toLowerCase())).length,
+      }))
+      .filter(r => r.matchCount > 0)
+      .sort((a, b) => b.matchCount - a.matchCount)
+      .slice(0, 6);
+
+    if (scored.length === 0) {
+      strip.appendChild(createEmptyState(
+        '🥲', '맞는 레시피가 없어요', '재료를 더 추가하면 추천해 드릴게요!'
+      ));
+      return;
+    }
+
+    scored.forEach(r => strip.appendChild(buildRecoCard(r, myIngredients)));
   }
 
   /* ---------- 초기화 ---------- */
@@ -977,12 +1765,114 @@ const Explore = (() => {
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
 
+  /* ---------- SNS 트렌딩 카드 ---------- */
+
+  function buildTrendCard(trend, rank) {
+    const recipe = RECIPES.find(r => r.id === trend.recipeId);
+    if (!recipe) return null;
+
+    const card = document.createElement('div');
+    card.className = 'trend-card';
+
+    /* 비주얼 영역 */
+    const visual = document.createElement('div');
+    visual.className = 'trend-card-visual';
+
+    // 순위 뱃지
+    const rankBadge = document.createElement('div');
+    rankBadge.className = `trend-rank${rank <= 3 ? ' trend-rank--top' : ''}`;
+    rankBadge.textContent = `${rank}위`;
+
+    // 이모지
+    const emojiEl = document.createElement('div');
+    emojiEl.className = 'trend-card-emoji';
+    emojiEl.textContent = recipe.emoji;
+
+    // 불꽃 오버레이 (1~3위만)
+    if (rank <= 3) {
+      const flame = document.createElement('div');
+      flame.className = 'trend-flame';
+      flame.textContent = '🔥';
+      visual.appendChild(flame);
+    }
+
+    visual.append(rankBadge, emojiEl);
+
+    /* 정보 영역 */
+    const info = document.createElement('div');
+    info.className = 'trend-card-info';
+
+    // 이름 + 평점을 한 줄에
+    const nameRow = document.createElement('div');
+    nameRow.className = 'trend-card-name-row';
+
+    const name = document.createElement('div');
+    name.className = 'trend-card-name';
+    name.textContent = recipe.name;
+
+    const ratingBadge = document.createElement('span');
+    ratingBadge.className = 'trend-rating-badge';
+    ratingBadge.innerHTML = `<svg viewBox="0 0 24 24" class="rating-star rating-star--sm"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${(recipe.rating ?? 0).toFixed(1)}`;
+
+    nameRow.append(name, ratingBadge);
+
+    // 요리 중 인원 뱃지
+    const countRow = document.createElement('div');
+    countRow.className = 'trend-count-row';
+
+    const countBadge = document.createElement('div');
+    countBadge.className = 'trend-count-badge';
+    countBadge.innerHTML = `🍳 <strong>${trend.count}명</strong> 요리 중`;
+
+    countRow.append(countBadge);
+
+    // 해시태그
+    const tagRow = document.createElement('div');
+    tagRow.className = 'trend-tag-row';
+    trend.tags.forEach(tag => {
+      const t = document.createElement('span');
+      t.className = 'trend-tag';
+      t.textContent = tag;
+      tagRow.appendChild(t);
+    });
+
+    info.append(nameRow, countRow, tagRow);
+    card.append(visual, info);
+    card.addEventListener('click', () => RecipeModal.open(recipe.id));
+    return card;
+  }
+
+  function renderTrendStrip() {
+    const strip = document.getElementById('sns-trend-strip');
+    if (!strip) return;
+    strip.innerHTML = '';
+    TREND_DATA.forEach((trend, i) => {
+      const card = buildTrendCard(trend, i + 1);
+      if (card) strip.appendChild(card);
+    });
+  }
+
   function init() {
+    refreshRecos();
+    renderTrendStrip();
     renderCategoryChips();
     render();
 
-    const searchInput  = document.getElementById('search-input');
-    const favToggleBtn = document.getElementById('fav-toggle-btn');
+    const searchInput = document.getElementById('search-input');
+    const searchBtn   = document.getElementById('explore-search-btn');
+    const searchWrap  = document.getElementById('explore-search-wrap');
+
+    // 검색 아이콘 토글
+    searchBtn?.addEventListener('click', () => {
+      const isOpen = searchWrap?.classList.toggle('open');
+      if (isOpen) {
+        searchInput?.focus();
+      } else {
+        query = '';
+        if (searchInput) searchInput.value = '';
+        render();
+      }
+    });
 
     if (searchInput) {
       searchInput.addEventListener('input', debounce(e => {
@@ -990,18 +1880,9 @@ const Explore = (() => {
         render();
       }, 180));
     }
-
-    if (favToggleBtn) {
-      favToggleBtn.addEventListener('click', () => {
-        showFavOnly = !showFavOnly;
-        favToggleBtn.classList.toggle('active', showFavOnly);
-        favToggleBtn.setAttribute('aria-pressed', String(showFavOnly));
-        render();
-      });
-    }
   }
 
-  return { init, toggleFavorite, isFavorite: id => favorites.has(id) };
+  return { init, refreshRecos, toggleFavorite, isFavorite: id => favorites.has(id), filterByIngredients, clearFridgeFilter };
 })();
 
 
@@ -1009,121 +1890,6 @@ const Explore = (() => {
    Home — AI 채팅 & 냉장고 파먹기 추천
    ========================================= */
 const Home = (() => {
-
-  /* ---------- SNS 트렌딩 데이터 ---------- */
-
-  const SNS_TRENDING = [
-    {
-      id: 't1', emoji: '🥘', name: '마라탕',
-      mentions: 15400,
-      hashtags: ['#마라탕', '#중식', '#매운맛'],
-      bg: 'linear-gradient(135deg,#FFF0F5 0%,#FFE4D6 100%)',
-    },
-    {
-      id: 't2', emoji: '🍜', name: '짜장 볶음밥',
-      mentions: 8700,
-      hashtags: ['#짜장볶음밥', '#중식', '#혼밥'],
-      bg: 'linear-gradient(135deg,#FFF7ED 0%,#FEF3C7 100%)',
-    },
-    {
-      id: 't3', emoji: '🥗', name: '그릭 요거트 볼',
-      mentions: 6200,
-      hashtags: ['#그릭요거트', '#건강식', '#다이어트'],
-      bg: 'linear-gradient(135deg,#F0FDF4 0%,#DCFCE7 100%)',
-    },
-    {
-      id: 't4', emoji: '🍳', name: '에그 베네딕트',
-      mentions: 4800,
-      hashtags: ['#에그베네딕트', '#브런치', '#홈카페'],
-      bg: 'linear-gradient(135deg,#FFFBEB 0%,#FEF9C3 100%)',
-    },
-    {
-      id: 't5', emoji: '🥪', name: '스모어 샌드위치',
-      mentions: 3900,
-      hashtags: ['#샌드위치', '#브런치', '#카페감성'],
-      bg: 'linear-gradient(135deg,#F0F9FF 0%,#E0F2FE 100%)',
-    },
-    {
-      id: 't6', emoji: '🍱', name: '도시락 밥버거',
-      mentions: 3200,
-      hashtags: ['#밥버거', '#도시락', '#간편식'],
-      bg: 'linear-gradient(135deg,#FDF4FF 0%,#FAE8FF 100%)',
-    },
-    {
-      id: 't7', emoji: '🫕', name: '부대찌개 라볶이',
-      mentions: 2600,
-      hashtags: ['#라볶이', '#부대찌개', '#분식'],
-      bg: 'linear-gradient(135deg,#FFF1F2 0%,#FFE4E6 100%)',
-    },
-  ];
-
-  const snsSaved = new Set();
-
-  function formatMentions(n) {
-    if (n >= 10000) return `${(n / 10000).toFixed(1)}만`;
-    if (n >= 1000)  return `${(n / 1000).toFixed(1)}k`;
-    return String(n);
-  }
-
-  function buildSNSCard(item) {
-    const card = document.createElement('div');
-    card.className = 'sns-card';
-
-    /* 비주얼 영역 (정사각형 이미지) */
-    const visual = document.createElement('div');
-    visual.className = 'sns-card-visual';
-    visual.style.background = item.bg;
-
-    const emojiEl = document.createElement('div');
-    emojiEl.className = 'sns-card-emoji';
-    emojiEl.textContent = item.emoji;
-
-    /* 북마크 버튼 */
-    const bookmark = document.createElement('button');
-    bookmark.className = `sns-card-bookmark${snsSaved.has(item.id) ? ' active' : ''}`;
-    bookmark.setAttribute('aria-label', '저장');
-    bookmark.innerHTML = `<svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-    </svg>`;
-    bookmark.addEventListener('click', e => {
-      e.stopPropagation();
-      snsSaved.has(item.id) ? snsSaved.delete(item.id) : snsSaved.add(item.id);
-      bookmark.classList.toggle('active', snsSaved.has(item.id));
-    });
-
-    visual.append(emojiEl, bookmark);
-
-    /* 정보 영역 */
-    const info = document.createElement('div');
-    info.className = 'sns-card-info';
-
-    const name = document.createElement('div');
-    name.className = 'sns-card-name';
-    name.textContent = item.name;
-
-    const mentions = document.createElement('div');
-    mentions.className = 'sns-card-mentions';
-    mentions.textContent = `지금 ${formatMentions(item.mentions)}명이 보고 있어요`;
-
-    const tags = document.createElement('div');
-    tags.className = 'sns-card-tags';
-    item.hashtags.forEach(tag => {
-      const t = document.createElement('span');
-      t.className = 'sns-tag';
-      t.textContent = tag;
-      tags.appendChild(t);
-    });
-
-    info.append(name, mentions, tags);
-    card.append(visual, info);
-    return card;
-  }
-
-  function initSNSStrip() {
-    const strip = document.getElementById('sns-strip');
-    if (!strip) return;
-    SNS_TRENDING.forEach(item => strip.appendChild(buildSNSCard(item)));
-  }
 
   /* ---------- 가짜 AI 응답 규칙 ---------- */
   const AI_RULES = [
@@ -1266,125 +2032,9 @@ const Home = (() => {
     }, delay);
   }
 
-  /* ---------- 냉장고 파먹기 추천 ---------- */
-
-  function buildRecoCard(recipe, myIngredients) {
-    const card = document.createElement('div');
-    card.className = 'reco-card';
-
-    /* --- 상단 비주얼 영역 --- */
-    const visual = document.createElement('div');
-    visual.className = 'reco-card-visual';
-
-    // 이모지 (레시피 이미지 대체)
-    const emojiEl = document.createElement('div');
-    emojiEl.className = 'reco-card-emoji';
-    emojiEl.textContent = recipe.emoji;
-
-    // 북마크 버튼 (우측 상단 플로팅)
-    const bookmarkBtn = document.createElement('button');
-    bookmarkBtn.className = `reco-card-bookmark${Explore.isFavorite(recipe.id) ? ' active' : ''}`;
-    bookmarkBtn.setAttribute('aria-label', '즐겨찾기');
-    bookmarkBtn.innerHTML = `<svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-    </svg>`;
-    bookmarkBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      Explore.toggleFavorite(recipe.id);
-      bookmarkBtn.classList.toggle('active', Explore.isFavorite(recipe.id));
-    });
-
-    // 재료 일치도 뱃지 (좌측 하단 오버레이)
-    const ownedIngrs = recipe.ingredients.filter(ing => myIngredients.has(ing.toLowerCase()));
-    const matchBadge = document.createElement('div');
-    matchBadge.className = 'reco-match-badge';
-    matchBadge.textContent = `${ownedIngrs.slice(0, 2).join(', ')} 포함 🌱`;
-
-    visual.append(emojiEl, bookmarkBtn, matchBadge);
-
-    /* --- 하단 정보 영역 --- */
-    const info = document.createElement('div');
-    info.className = 'reco-card-info';
-
-    // 1. 요리 이름 (굵은 볼드체, 최대 2줄)
-    const name = document.createElement('div');
-    name.className = 'reco-card-name';
-    name.textContent = recipe.name;
-
-    // 2. 소요 시간 및 난이도
-    const meta = document.createElement('div');
-    meta.className = 'reco-card-meta';
-    const diffColor = DIFF_COLOR[recipe.difficulty] || '#888';
-    meta.innerHTML = `<span>⏱️ ${recipe.time}분</span><span class="reco-meta-sep">|</span><span style="color:${diffColor}">⭐ ${recipe.difficulty}</span>`;
-
-    info.append(name, meta);
-
-    // 3. 부족한 재료 안내 (선택)
-    const ownedSet = new Set(ownedIngrs.map(i => i.toLowerCase()));
-    const missingKey = recipe.keyIngredients.filter(ing => !ownedSet.has(ing.toLowerCase()));
-    if (missingKey.length > 0) {
-      const hint = document.createElement('div');
-      hint.className = 'reco-card-hint';
-      hint.textContent = missingKey.length === 1
-        ? `${missingKey[0]}만 있으면 바로 완성!`
-        : `${missingKey.slice(0, 2).join(', ')} 추가하면 완성!`;
-      info.appendChild(hint);
-    }
-
-    card.append(visual, info);
-
-    // 카드 클릭 → 상세 모달
-    card.addEventListener('click', () => RecipeModal.open(recipe.id));
-
-    return card;
-  }
-
-  function refreshFridgeRecos() {
-    const strip = document.getElementById('fridge-reco-strip');
-    if (!strip) return;
-    strip.innerHTML = '';
-
-    const fridgeData    = Storage.get('yorijori_ingredients', []);
-    const myIngredients = new Set(
-      fridgeData.map(i => (typeof i === 'string' ? i : i.name).toLowerCase())
-    );
-
-    if (myIngredients.size === 0) {
-      strip.appendChild(createEmptyState(
-        '🧊',
-        '냉장고가 비어있어요',
-        '냉장고 탭에서 재료를 추가하면\n맞춤 레시피를 추천해 드려요!'
-      ));
-      return;
-    }
-
-    // 레시피별 매칭 재료 수 계산 → 내림차순 정렬 → 상위 5개
-    const scored = RECIPES
-      .map(r => ({
-        ...r,
-        matchCount: r.ingredients.filter(ing => myIngredients.has(ing.toLowerCase())).length,
-      }))
-      .filter(r => r.matchCount > 0)
-      .sort((a, b) => b.matchCount - a.matchCount)
-      .slice(0, 5);
-
-    if (scored.length === 0) {
-      strip.appendChild(createEmptyState(
-        '🥲',
-        '맞는 레시피가 없어요',
-        '재료를 더 추가하면 추천해 드릴게요!'
-      ));
-      return;
-    }
-
-    scored.forEach(r => strip.appendChild(buildRecoCard(r, myIngredients)));
-  }
-
   /* ---------- 초기화 ---------- */
 
   function init() {
-    refreshFridgeRecos();
-    initSNSStrip();
 
     const input   = document.getElementById('chat-input');
     const sendBtn = document.getElementById('chat-send-btn');
@@ -1393,9 +2043,115 @@ const Home = (() => {
     input?.addEventListener('keydown', e => {
       if (e.key === 'Enter') sendMessage();
     });
+
+    /* ── 액션 메뉴 (+ 버튼) ── */
+    const attachBtn  = document.getElementById('chat-attach-btn');
+    const actionMenu = document.getElementById('chat-action-menu');
+
+    function openMenu() {
+      actionMenu.classList.add('open');
+      actionMenu.setAttribute('aria-hidden', 'false');
+      attachBtn.classList.add('active');
+    }
+    function closeMenu() {
+      actionMenu.classList.remove('open');
+      actionMenu.setAttribute('aria-hidden', 'true');
+      attachBtn.classList.remove('active');
+    }
+
+    attachBtn?.addEventListener('click', e => {
+      e.stopPropagation();
+      actionMenu.classList.contains('open') ? closeMenu() : openMenu();
+    });
+
+    // 메뉴 외부 클릭 시 닫기
+    document.addEventListener('click', e => {
+      if (!actionMenu?.contains(e.target)) closeMenu();
+    });
+
+    // 사진 업로드 (추후 구현)
+    document.getElementById('action-photo')?.addEventListener('click', () => {
+      closeMenu();
+    });
+
+    /* ── 재료 선택 칩 ── */
+    const ingredientChipsEl = document.getElementById('ingredient-chips');
+    let isIngredientSelectorOpen = false;
+
+    const FALLBACK_INGREDIENTS = ['쌀', '돼지고기', '계란', '시우'];
+
+    function openIngredientSelector() {
+      // 냉장고 저장 데이터 또는 폴백 사용
+      const stored = Storage.get('yorijori_ingredients', []);
+      const names  = stored.length
+        ? stored.map(i => i.name || i)
+        : FALLBACK_INGREDIENTS;
+
+      // 칩 렌더링
+      ingredientChipsEl.innerHTML = '';
+
+      const label = document.createElement('span');
+      label.className = 'ingredient-chips-label';
+      label.textContent = '재료 선택';
+      ingredientChipsEl.appendChild(label);
+
+      names.forEach(name => {
+        const btn = document.createElement('button');
+        btn.className = 'ingredient-chip';
+        btn.textContent = name;
+        btn.addEventListener('click', () => {
+          input.value = `${name} 으로 만들 수 있는 요리 추천해줘`;
+          closeIngredientSelector();
+          sendMessage();
+        });
+        ingredientChipsEl.appendChild(btn);
+      });
+
+      ingredientChipsEl.classList.remove('hidden');
+      ingredientChipsEl.setAttribute('aria-hidden', 'false');
+      chips?.classList.add('hidden'); // quick-chips 숨기기
+      isIngredientSelectorOpen = true;
+    }
+
+    function closeIngredientSelector() {
+      ingredientChipsEl.classList.add('hidden');
+      ingredientChipsEl.setAttribute('aria-hidden', 'true');
+      chips?.classList.remove('hidden'); // quick-chips 복원
+      isIngredientSelectorOpen = false;
+    }
+
+    document.getElementById('action-ingredients')?.addEventListener('click', () => {
+      closeMenu();
+      isIngredientSelectorOpen ? closeIngredientSelector() : openIngredientSelector();
+    });
+
+    /* 빠른 답장 칩 */
+    const chips = document.getElementById('quick-chips');
+
+    function hideChips() { chips?.classList.add('hidden'); }
+    function showChips() { chips?.classList.remove('hidden'); }
+
+    // 타이핑 시작 → 칩 페이드아웃 / 입력 비우면 → 재표시
+    input?.addEventListener('input', () => {
+      if (input.value.length > 0) {
+        hideChips();
+        if (isIngredientSelectorOpen) closeIngredientSelector();
+      } else {
+        showChips();
+      }
+    });
+
+    document.querySelectorAll('.quick-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        if (!input) return;
+        input.value = chip.dataset.text;
+        sendMessage();
+        showChips(); // 전송 후 칩 다시 표시
+      });
+    });
   }
 
-  return { init, refreshFridgeRecos };
+  return { init };
 })();
 
 
@@ -1447,10 +2203,19 @@ const RecipeModal = (() => {
     const info = document.createElement('div');
     info.className = 'modal-recipe-info';
 
+    const nameRow = document.createElement('div');
+    nameRow.className = 'modal-recipe-name-row';
+
     const nameEl = document.createElement('h2');
     nameEl.className = 'modal-recipe-name';
     nameEl.id = 'modal-recipe-name';
     nameEl.textContent = recipe.name;
+
+    const headerRating = document.createElement('span');
+    headerRating.className = 'modal-recipe-header-rating';
+    headerRating.innerHTML = `<svg viewBox="0 0 24 24" class="rating-star rating-star--md"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${(recipe.rating ?? 4.5).toFixed(1)}`;
+
+    nameRow.append(nameEl, headerRating);
 
     const badgesEl = document.createElement('div');
     badgesEl.className = 'modal-recipe-badges';
@@ -1470,7 +2235,7 @@ const RecipeModal = (() => {
     ingrEl.className = 'modal-recipe-ingr';
     ingrEl.textContent = recipe.ingredients.join(' · ');
 
-    info.append(nameEl, badgesEl, ingrEl);
+    info.append(nameRow, badgesEl, ingrEl);
     header.append(emojiEl, info);
     frag.appendChild(header);
 
@@ -1507,22 +2272,204 @@ const RecipeModal = (() => {
     ytTitle.className = 'modal-section-title';
     ytTitle.textContent = '유튜브 참고';
 
-    const ytCard = document.createElement('div');
-    ytCard.className = 'modal-youtube-card';
-    ytCard.innerHTML = `
-      <div class="modal-youtube-thumb">
-        <div class="modal-youtube-play-icon">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 5v14l11-7z"/>
-          </svg>
-        </div>
-        <div class="modal-youtube-label">YouTube</div>
-      </div>
-      <p class="modal-youtube-title">${recipe.youtube_title}</p>
-    `;
+    // 관련 영상 카드 목록 (첫 번째는 레시피 고유 제목, 나머지는 연관 제목 자동 생성)
+    const ytVideos = [
+      { title: recipe.youtube_title,                                          grad: 'linear-gradient(135deg,#1a1a2e,#0f3460)' },
+      { title: `${recipe.name} 황금 레시피 | 영양사가 알려주는 비법`,         grad: 'linear-gradient(135deg,#1e3a1e,#2a5c1e)' },
+      { title: `${recipe.name} 더 맛있게 | 소스 & 플레이팅 꿀팁`,            grad: 'linear-gradient(135deg,#3a1a1a,#6b2828)' },
+      { title: `${recipe.name} 응용편 | 냉장고 재료로 색다르게 만들기`,       grad: 'linear-gradient(135deg,#1a2a3a,#2c4a6e)' },
+    ];
 
-    ytSection.append(ytTitle, ytCard);
+    const ytScroll = document.createElement('div');
+    ytScroll.className = 'modal-yt-scroll';
+
+    ytVideos.forEach(v => {
+      const card = document.createElement('div');
+      card.className = 'modal-yt-card';
+      card.innerHTML = `
+        <div class="modal-yt-thumb" style="background:${v.grad}">
+          <div class="modal-yt-play">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </div>
+          <span class="modal-yt-label">YouTube</span>
+        </div>
+        <p class="modal-yt-title">${v.title}</p>
+      `;
+      ytScroll.appendChild(card);
+    });
+
+    ytSection.append(ytTitle, ytScroll);
     frag.appendChild(ytSection);
+
+    /* 리뷰 섹션 */
+    const photoReviews = RECIPE_REVIEWS[recipe.id] || [];
+    const textReviews  = RECIPE_TEXT_REVIEWS[recipe.id] || [];
+    const totalReviews = photoReviews.length + textReviews.length;
+
+    if (totalReviews > 0) {
+      frag.appendChild(makeDivider());
+
+      const reviewSection = document.createElement('div');
+      reviewSection.className = 'modal-section';
+
+      // 섹션 타이틀 행
+      const reviewTitleRow = document.createElement('div');
+      reviewTitleRow.className = 'modal-review-title-row';
+
+      const reviewTitle = document.createElement('h3');
+      reviewTitle.className = 'modal-section-title';
+      reviewTitle.textContent = '리뷰';
+
+      const reviewCount = document.createElement('span');
+      reviewCount.className = 'modal-review-count';
+      reviewCount.textContent = totalReviews;
+
+      reviewTitleRow.append(reviewTitle, reviewCount);
+
+      // ── 헬퍼: 별점 DOM ──────────────────────────────
+      const starSVG = `<svg viewBox="0 0 24 24" class="review-star"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+      function buildStars(rating) {
+        const wrap = document.createElement('div');
+        wrap.className = 'modal-review-stars';
+        for (let i = 0; i < 5; i++) {
+          const s = document.createElement('span');
+          s.className = `review-star-wrap${i < rating ? ' filled' : ''}`;
+          s.innerHTML = starSVG;
+          wrap.appendChild(s);
+        }
+        return wrap;
+      }
+
+      // ── 헬퍼: 포토 리뷰 아이템 ───────────────────────
+      function buildPhotoItem(rv) {
+        const item = document.createElement('div');
+        item.className = 'modal-review-item';
+
+        const content = document.createElement('div');
+        content.className = 'modal-review-content';
+
+        const reviewHeader = document.createElement('div');
+        reviewHeader.className = 'modal-review-header';
+
+        const userName = document.createElement('span');
+        userName.className = 'modal-review-user';
+        userName.textContent = rv.user;
+
+        reviewHeader.append(userName, buildStars(rv.rating));
+
+        const reviewText = document.createElement('p');
+        reviewText.className = 'modal-review-text';
+        reviewText.textContent = rv.text;
+
+        content.append(reviewHeader, reviewText);
+
+        const photo = document.createElement('div');
+        photo.className = 'modal-review-photo';
+        photo.style.background = rv.grad;
+        photo.textContent = rv.photo;
+
+        item.append(content, photo);
+        return item;
+      }
+
+      // ── 헬퍼: 텍스트 리뷰 아이템 ─────────────────────
+      function buildTextItem(rv) {
+        const item = document.createElement('div');
+        item.className = 'modal-text-review-item';
+
+        const meta = document.createElement('div');
+        meta.className = 'modal-text-review-meta';
+
+        const userName = document.createElement('span');
+        userName.className = 'modal-review-user';
+        userName.textContent = rv.user;
+
+        const rightMeta = document.createElement('div');
+        rightMeta.className = 'modal-text-review-right-meta';
+        rightMeta.append(buildStars(rv.rating));
+
+        if (rv.date) {
+          const date = document.createElement('span');
+          date.className = 'modal-text-review-date';
+          date.textContent = rv.date;
+          rightMeta.appendChild(date);
+        }
+
+        meta.append(userName, rightMeta);
+
+        const reviewText = document.createElement('p');
+        reviewText.className = 'modal-review-text';
+        reviewText.textContent = rv.text;
+
+        item.append(meta, reviewText);
+        return item;
+      }
+
+      // ── 포토 모아보기 갤러리 ─────────────────────────
+      const GALLERY_MAX = 5;
+      const galleryWrap = document.createElement('div');
+      galleryWrap.className = 'modal-photo-gallery';
+
+      photoReviews.forEach((rv, idx) => {
+        const thumb = document.createElement('div');
+        thumb.className = 'modal-photo-thumb';
+        thumb.style.background = rv.grad;
+
+        // 초과분: 마지막 슬롯에 +N 오버레이
+        if (idx === GALLERY_MAX - 1 && photoReviews.length > GALLERY_MAX) {
+          const over = document.createElement('div');
+          over.className = 'modal-photo-thumb-more';
+          over.textContent = `+${photoReviews.length - (GALLERY_MAX - 1)}`;
+          thumb.appendChild(over);
+        } else {
+          thumb.textContent = rv.photo;
+        }
+
+        // 라이트박스 열기 (전체 목록 + 현재 인덱스)
+        thumb.addEventListener('click', () => PhotoLightbox.open(photoReviews, idx));
+
+        galleryWrap.appendChild(thumb);
+        if (idx >= GALLERY_MAX - 1 && photoReviews.length > GALLERY_MAX) return;
+      });
+
+      // ── 초기 렌더 (포토 2 + 텍스트 2) ────────────────
+      const INIT = 2;
+      const photoList = document.createElement('div');
+      photoList.className = 'modal-review-list';
+      photoReviews.slice(0, INIT).forEach(rv => photoList.appendChild(buildPhotoItem(rv)));
+
+      const textList = document.createElement('div');
+      textList.className = 'modal-text-review-list';
+      textReviews.slice(0, INIT).forEach(rv => textList.appendChild(buildTextItem(rv)));
+
+      // ── 더보기 버튼 ───────────────────────────────────
+      const hiddenCount = (photoReviews.length - Math.min(INIT, photoReviews.length))
+                        + (textReviews.length  - Math.min(INIT, textReviews.length));
+
+      reviewSection.append(reviewTitleRow, galleryWrap, photoList, textList);
+
+      if (hiddenCount > 0) {
+        const moreBtn = document.createElement('button');
+        moreBtn.className = 'modal-review-more-btn';
+        moreBtn.textContent = `리뷰 더보기 (${hiddenCount}개)`;
+        moreBtn.addEventListener('click', () => {
+          photoReviews.slice(INIT).forEach(rv => {
+            const el = buildPhotoItem(rv);
+            el.classList.add('review-item--fadein');
+            photoList.appendChild(el);
+          });
+          textReviews.slice(INIT).forEach(rv => {
+            const el = buildTextItem(rv);
+            el.classList.add('review-item--fadein');
+            textList.appendChild(el);
+          });
+          moreBtn.remove();
+        });
+        reviewSection.appendChild(moreBtn);
+      }
+
+      frag.appendChild(reviewSection);
+    }
 
     // 하단 여백 (네비바 가림 방지)
     const spacer = document.createElement('div');
@@ -1563,6 +2510,124 @@ const RecipeModal = (() => {
 
 
 /* =========================================
+   PhotoLightbox — 리뷰 사진 확대 오버레이
+   ========================================= */
+const PhotoLightbox = (() => {
+  let photos  = [];   // 현재 레시피의 포토 리뷰 배열
+  let current = 0;    // 현재 인덱스
+
+  // ── DOM 참조 (init 후 유효) ──────────────────────────
+  let lb, photoEl, metaEl, textEl, indicatorsEl, prevBtn, nextBtn;
+
+  // ── 콘텐츠 렌더 ──────────────────────────────────────
+  function render(idx, animate = false) {
+    const rv = photos[idx];
+    if (!rv) return;
+
+    if (animate) {
+      photoEl.classList.remove('lb-slide');
+      void photoEl.offsetWidth;          // reflow → 애니메이션 재시작
+      photoEl.classList.add('lb-slide');
+    }
+
+    photoEl.style.background = rv.grad;
+    photoEl.textContent       = rv.photo;
+
+    // 별점
+    const filled   = `fill:#f59e0b`;
+    const unfilled = `fill:rgba(255,255,255,0.28)`;
+    const starBase = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;flex-shrink:0"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+
+    metaEl.innerHTML = '';
+    const userSpan = document.createElement('span');
+    userSpan.className   = 'photo-lightbox-user';
+    userSpan.textContent = rv.user;
+
+    const starsWrap = document.createElement('div');
+    starsWrap.className = 'photo-lightbox-stars';
+    for (let i = 0; i < 5; i++) {
+      starsWrap.innerHTML += `<span style="display:inline-flex;${i < rv.rating ? filled : unfilled}">${starBase}</span>`;
+    }
+    metaEl.append(userSpan, starsWrap);
+
+    textEl.textContent = rv.text;
+
+    // 인디케이터 점
+    [...indicatorsEl.children].forEach((dot, i) => {
+      dot.classList.toggle('active', i === idx);
+    });
+
+    // 화살표 표시/숨김
+    prevBtn.hidden = idx === 0;
+    nextBtn.hidden = idx === photos.length - 1;
+  }
+
+  // ── 열기 ─────────────────────────────────────────────
+  function open(rvList, startIdx = 0) {
+    // 단일 리뷰 객체로 호출될 경우를 배열로 통일
+    photos  = Array.isArray(rvList) ? rvList : [rvList];
+    current = startIdx;
+
+    // 인디케이터 재구성
+    indicatorsEl.innerHTML = '';
+    if (photos.length > 1) {
+      photos.forEach((_, i) => {
+        const dot = document.createElement('span');
+        dot.className = 'lb-dot';
+        dot.addEventListener('click', () => { current = i; render(current, true); });
+        indicatorsEl.appendChild(dot);
+      });
+    }
+
+    render(current);
+    lb.removeAttribute('hidden');
+    requestAnimationFrame(() => lb.classList.add('open'));
+  }
+
+  // ── 닫기 ─────────────────────────────────────────────
+  function close() {
+    lb.classList.remove('open');
+    lb.addEventListener('transitionend', () => lb.setAttribute('hidden', ''), { once: true });
+  }
+
+  // ── 초기화 ───────────────────────────────────────────
+  function init() {
+    lb           = document.getElementById('photo-lightbox');
+    photoEl      = document.getElementById('photo-lightbox-photo');
+    metaEl       = document.getElementById('photo-lightbox-meta');
+    textEl       = document.getElementById('photo-lightbox-text');
+    indicatorsEl = document.getElementById('photo-lightbox-indicators');
+    prevBtn      = document.getElementById('photo-lightbox-prev');
+    nextBtn      = document.getElementById('photo-lightbox-next');
+    if (!lb) return;
+
+    document.getElementById('photo-lightbox-close')
+      ?.addEventListener('click', close);
+
+    prevBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (current > 0) { current--; render(current, true); }
+    });
+
+    nextBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (current < photos.length - 1) { current++; render(current, true); }
+    });
+
+    lb.addEventListener('click', e => { if (e.target === lb) close(); });
+
+    document.addEventListener('keydown', e => {
+      if (!lb.classList.contains('open')) return;
+      if (e.key === 'Escape')     close();
+      if (e.key === 'ArrowLeft'  && current > 0)                   { current--; render(current, true); }
+      if (e.key === 'ArrowRight' && current < photos.length - 1)   { current++; render(current, true); }
+    });
+  }
+
+  return { init, open };
+})();
+
+/* =========================================
    Category Chips (홈 화면) — 토글 선택
    ========================================= */
 function initChips() {
@@ -1570,6 +2635,196 @@ function initChips() {
     chip.addEventListener('click', () => chip.classList.toggle('selected'));
   });
 }
+
+
+/* =========================================
+   Settings — 설정 모달
+   ========================================= */
+const Settings = (() => {
+
+  const FONT_MAP = {
+    system:      '',
+    nanumgothic: "'Nanum Gothic', sans-serif",
+    notoserifkr: "'Noto Serif KR', serif",
+  };
+
+  const SIZE_MAP = {
+    small:  '13px',
+    medium: '15px',
+    large:  '17px',
+  };
+
+  let current = {
+    font:      Storage.get('yrj_font',       'system'),
+    fontSize:  Storage.get('yrj_font_size',  'medium'),
+    showChips: Storage.get('yrj_show_chips', true),
+  };
+
+  const LOGIN_KEY = 'yrj_logged_in';
+
+  /** 로그인 상태 — localStorage에서 복원 */
+  let isLoggedIn = Storage.get(LOGIN_KEY, false);
+
+  function renderLoginSection() {
+    const loginBtn  = document.getElementById('google-login-btn');
+    const logoutBtn = document.getElementById('google-logout-btn');
+    if (loginBtn)  loginBtn.hidden  = isLoggedIn;
+    if (logoutBtn) logoutBtn.hidden = !isLoggedIn;
+
+    // 배너: hidden 속성 대신 CSS 클래스로 트랜지션 처리
+    const banner = document.getElementById('login-prompt-banner');
+    if (banner) banner.classList.toggle('is-hidden', isLoggedIn);
+  }
+
+  /** 버튼에 pop 애니메이션을 재생한 뒤 콜백 실행 */
+  function animatePress(btnId, cb) {
+    const btn = document.getElementById(btnId);
+    if (!btn) { cb(); return; }
+    btn.classList.remove('pressing');
+    // reflow로 애니메이션 재시작 보장
+    void btn.offsetWidth;
+    btn.classList.add('pressing');
+    btn.addEventListener('animationend', () => {
+      btn.classList.remove('pressing');
+      cb();
+    }, { once: true });
+  }
+
+  function mockLogin() {
+    animatePress('google-login-btn', () => {
+      isLoggedIn = true;
+      Storage.set(LOGIN_KEY, true);
+      renderLoginSection();
+    });
+  }
+
+  function mockLogout() {
+    animatePress('google-logout-btn', () => {
+      isLoggedIn = false;
+      Storage.set(LOGIN_KEY, false);
+      renderLoginSection();
+    });
+  }
+
+  function applyFont(val) {
+    document.documentElement.style.setProperty('--app-font', FONT_MAP[val] || '');
+  }
+
+  function applyFontSize(val) {
+    document.documentElement.style.setProperty('--app-font-size', SIZE_MAP[val] || SIZE_MAP.medium);
+  }
+
+  function applyChips(val) {
+    const chips = document.getElementById('quick-chips');
+    if (chips) chips.classList.toggle('hidden', !val);
+  }
+
+  function applyAll() {
+    applyFont(current.font);
+    applyFontSize(current.fontSize);
+    applyChips(current.showChips);
+  }
+
+  function syncUI() {
+    const overlay = document.getElementById('settings-modal');
+    if (!overlay) return;
+
+    // 폰트 라디오
+    const radio = overlay.querySelector(`input[name="font"][value="${current.font}"]`);
+    if (radio) radio.checked = true;
+
+    // 글자 크기 세그먼트
+    overlay.querySelectorAll('.settings-segment-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.size === current.fontSize);
+    });
+
+    // 칩 토글
+    const toggle = document.getElementById('chips-toggle');
+    if (toggle) toggle.checked = current.showChips;
+
+    // 로그인 섹션
+    renderLoginSection();
+  }
+
+  function openModal() {
+    const overlay = document.getElementById('settings-modal');
+    if (!overlay) return;
+    syncUI();
+    overlay.removeAttribute('hidden');
+    requestAnimationFrame(() => overlay.classList.add('open'));
+  }
+
+  function closeModal() {
+    const overlay = document.getElementById('settings-modal');
+    if (!overlay) return;
+    overlay.classList.remove('open');
+    overlay.addEventListener('transitionend', () => overlay.setAttribute('hidden', ''), { once: true });
+  }
+
+  function init() {
+    applyAll();
+    // 페이지 로드 시 localStorage 상태를 배너·버튼에 즉시 반영
+    renderLoginSection();
+
+    document.querySelector('.header-settings-btn')?.addEventListener('click', openModal);
+    document.getElementById('settings-close-btn')?.addEventListener('click', closeModal);
+    document.getElementById('settings-modal')?.addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeModal();
+    });
+
+    // 폰트 선택
+    document.querySelectorAll('input[name="font"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        current.font = radio.value;
+        Storage.set('yrj_font', current.font);
+        applyFont(current.font);
+      });
+    });
+
+    // 글자 크기
+    document.querySelectorAll('.settings-segment-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        current.fontSize = btn.dataset.size;
+        Storage.set('yrj_font_size', current.fontSize);
+        applyFontSize(current.fontSize);
+        document.querySelectorAll('.settings-segment-btn').forEach(b =>
+          b.classList.toggle('active', b === btn)
+        );
+      });
+    });
+
+    // 로그인 / 로그아웃
+    document.getElementById('google-login-btn')?.addEventListener('click', mockLogin);
+    document.getElementById('google-logout-btn')?.addEventListener('click', mockLogout);
+
+    // 로그인 유도 배너 — 클릭 시 설정 열기
+    document.getElementById('login-prompt-banner')?.addEventListener('click', openModal);
+
+    // 닫기 버튼 — 설정 열기 막고 배너만 접기
+    document.getElementById('login-prompt-close')?.addEventListener('click', e => {
+      e.stopPropagation();
+      const banner = document.getElementById('login-prompt-banner');
+      if (banner) banner.classList.add('is-hidden');
+    });
+
+    // 추천 문구 토글
+    document.getElementById('chips-toggle')?.addEventListener('change', e => {
+      current.showChips = e.target.checked;
+      Storage.set('yrj_show_chips', current.showChips);
+      applyChips(current.showChips);
+    });
+
+    // Escape
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        const overlay = document.getElementById('settings-modal');
+        if (overlay?.classList.contains('open')) closeModal();
+      }
+    });
+  }
+
+  return { init };
+})();
 
 
 /* =========================================
@@ -1581,5 +2836,35 @@ document.addEventListener('DOMContentLoaded', () => {
   Fridge.init();
   Explore.init();
   RecipeModal.init();
+  PhotoLightbox.init();
+  Settings.init();
   initChips();
+
+  // 냉장고 레시피 검색 버튼 클릭
+  document.getElementById('fridge-recipe-search-btn')
+    ?.addEventListener('click', () => {
+      const names = Fridge.getSelectedNames();
+      if (names.length === 0) return;
+      Explore.filterByIngredients(names);
+      Router.navigateTo('explore');
+    });
+
+  // 재료 필터 해제 버튼
+  document.getElementById('fridge-filter-clear-btn')
+    ?.addEventListener('click', () => {
+      Explore.clearFridgeFilter();
+    });
+
+  // 페이지 전환 시 냉장고 레시피 검색 버튼을 냉장고 탭에서만 표시
+  const _origNavigateTo = Router.navigateTo.bind(Router);
+  Router.navigateTo = function(pageId) {
+    _origNavigateTo(pageId);
+    const btn = document.getElementById('fridge-recipe-search-btn');
+    if (!btn) return;
+    if (pageId !== 'fridge') {
+      btn.hidden = true;
+    } else {
+      Fridge.updateRecipeSearchBtn();
+    }
+  };
 });
