@@ -16,7 +16,7 @@ import {
 import Svg, { Circle, Line, Path } from "react-native-svg";
 import { C } from "../../styles/colors";
 import st, { DIFF_COLOR } from "../../styles/tabs/explore";
-import { getIngredients } from "../store";
+import { getIngredients, loadFridgeFromStorage, saveFridgeToStorage, setIngredients } from "../store";
 import { EC2_ENDPOINTS } from "../config/api";
 import { useAuth } from "../context/AuthContext";
 
@@ -68,12 +68,15 @@ function StarInput({ value, onChange, size = 32 }) {
 
 function RecipeModal({ recipe, onClose }) {
   const { user } = useAuth();
-  const [textReviews, setTextReviews] = useState([]);
-  const [youtube,     setYoutube]     = useState(null);
-  const [reviewPage,  setReviewPage]  = useState(0);
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewText,  setReviewText]  = useState("");
-  const [submitting,  setSubmitting]  = useState(false);
+  const [textReviews,    setTextReviews]    = useState([]);
+  const [youtube,        setYoutube]        = useState(null);
+  const [reviewPage,     setReviewPage]     = useState(0);
+  const [reviewRating,   setReviewRating]   = useState(5);
+  const [reviewText,     setReviewText]     = useState("");
+  const [submitting,     setSubmitting]     = useState(false);
+  const [fridgeMatched,  setFridgeMatched]  = useState([]);
+  const [selectedUsed,   setSelectedUsed]   = useState(new Set());
+  const [removing,       setRemoving]       = useState(false);
 
   const PAGE_SIZE   = 5;
   const totalPages  = Math.max(1, Math.ceil(textReviews.length / PAGE_SIZE));
@@ -91,12 +94,53 @@ function RecipeModal({ recipe, onClose }) {
     setReviewPage(0);
     setReviewRating(5);
     setReviewText("");
+    setSelectedUsed(new Set());
     loadReviews(recipe.id).catch(() => {});
     fetch(`${EC2_ENDPOINTS.youtube}?q=${encodeURIComponent(recipe.name)}&recipeId=${recipe.id}`)
       .then(r => r.json())
       .then(videos => { if (videos?.length > 0) setYoutube(videos[0]); })
       .catch(() => {});
+    // 냉장고에서 레시피 재료와 겹치는 항목 찾기
+    loadFridgeFromStorage().then(stored => {
+      const recipeIngrs = recipe.ingredients || [];
+      const matched = stored.filter(fi =>
+        recipeIngrs.some(ri => {
+          const a = ri.toLowerCase(), b = fi.name.toLowerCase();
+          return a.includes(b) || b.includes(a);
+        })
+      );
+      setFridgeMatched(matched);
+    }).catch(() => {});
   }, [recipe?.id]);
+
+  async function removeUsedIngredients() {
+    if (!selectedUsed.size || removing) return;
+    setRemoving(true);
+    try {
+      const stored  = await loadFridgeFromStorage();
+      const newItems = stored.filter(i => !selectedUsed.has(i.id));
+      await saveFridgeToStorage(newItems);
+      setIngredients(newItems.map(i => i.name));
+      if (user?.userId) {
+        fetch(`${EC2_ENDPOINTS.fridge}/${user.userId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ingredients: newItems }),
+        }).catch(() => {});
+      }
+      setFridgeMatched(prev => prev.filter(i => !selectedUsed.has(i.id)));
+      setSelectedUsed(new Set());
+    } catch {}
+    setRemoving(false);
+  }
+
+  function toggleUsed(id) {
+    setSelectedUsed(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   async function submitReview() {
     if (!user || submitting) return;
@@ -181,6 +225,60 @@ function RecipeModal({ recipe, onClose }) {
                 ))}
               </View>
             )}
+
+            {/* 사용한 재료 제거 */}
+            <View style={st.divider} />
+            <View style={{ paddingVertical: 16 }}>
+              <Text style={st.sectionTitle}>사용한 재료 제거</Text>
+              {fridgeMatched.length === 0 ? (
+                <Text style={{ color: C.textMuted, fontSize: 13, textAlign: "center", paddingVertical: 12 }}>
+                  냉장고에 이 레시피 재료가 없어요
+                </Text>
+              ) : (
+                <>
+                  <View style={{ gap: 8, marginBottom: 12 }}>
+                    {fridgeMatched.map(item => {
+                      const selected = selectedUsed.has(item.id);
+                      return (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={{
+                            flexDirection: "row", alignItems: "center", gap: 10,
+                            padding: 10, borderRadius: 10, borderWidth: 1.5,
+                            borderColor: selected ? C.primary : C.border,
+                            backgroundColor: selected ? C.primaryLt : "#fff",
+                          }}
+                          onPress={() => toggleUsed(item.id)}
+                        >
+                          <View style={{
+                            width: 20, height: 20, borderRadius: 10, borderWidth: 1.5,
+                            borderColor: selected ? C.primary : C.border,
+                            backgroundColor: selected ? C.primary : "#fff",
+                            alignItems: "center", justifyContent: "center",
+                          }}>
+                            {selected && <Text style={{ fontSize: 11, color: "#fff", fontWeight: "800" }}>✓</Text>}
+                          </View>
+                          <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: C.text }}>{item.name}</Text>
+                          <Text style={{ fontSize: 12, color: C.textMuted }}>{item.count ?? 1}개</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <TouchableOpacity
+                    style={{
+                      height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center",
+                      backgroundColor: selectedUsed.size > 0 ? "#DC2626" : C.border,
+                    }}
+                    onPress={removeUsedIngredients}
+                    disabled={!selectedUsed.size || removing}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
+                      {removing ? "삭제 중..." : `선택한 재료 삭제 (${selectedUsed.size}개)`}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
 
             {/* 유튜브 */}
             {youtube && (
