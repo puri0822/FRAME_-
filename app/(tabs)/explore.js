@@ -100,25 +100,24 @@ function RecipeModal({ recipe, onClose }) {
       .then(r => r.json())
       .then(videos => { if (videos?.length > 0) setYoutube(videos[0]); })
       .catch(() => {});
-    // 냉장고에서 레시피 재료와 겹치는 항목 찾기
-    loadFridgeFromStorage().then(stored => {
-      const recipeIngrs = recipe.ingredients || [];
-      const matched = stored.filter(fi =>
-        recipeIngrs.some(ri => {
-          const a = ri.toLowerCase(), b = fi.name.toLowerCase();
-          return a.includes(b) || b.includes(a);
-        })
-      );
-      setFridgeMatched(matched);
-    }).catch(() => {});
+    // 냉장고 메모리(항상 최신) 기준으로 레시피 재료와 겹치는 이름 찾기
+    const fridgeNames = getIngredients();
+    const recipeIngrs = recipe.ingredients || [];
+    const matchedNames = recipeIngrs.filter(ri =>
+      fridgeNames.some(fn => {
+        const a = ri.toLowerCase(), b = fn.toLowerCase();
+        return a.includes(b) || b.includes(a);
+      })
+    );
+    setFridgeMatched(matchedNames);
   }, [recipe?.id]);
 
   async function removeUsedIngredients() {
     if (!selectedUsed.size || removing) return;
     setRemoving(true);
     try {
-      const stored  = await loadFridgeFromStorage();
-      const newItems = stored.filter(i => !selectedUsed.has(i.id));
+      const stored   = await loadFridgeFromStorage();
+      const newItems = stored.filter(i => !selectedUsed.has(i.name));
       await saveFridgeToStorage(newItems);
       setIngredients(newItems.map(i => i.name));
       if (user?.userId) {
@@ -128,16 +127,16 @@ function RecipeModal({ recipe, onClose }) {
           body: JSON.stringify({ ingredients: newItems }),
         }).catch(() => {});
       }
-      setFridgeMatched(prev => prev.filter(i => !selectedUsed.has(i.id)));
+      setFridgeMatched(prev => prev.filter(name => !selectedUsed.has(name)));
       setSelectedUsed(new Set());
     } catch {}
     setRemoving(false);
   }
 
-  function toggleUsed(id) {
+  function toggleUsed(name) {
     setSelectedUsed(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      next.has(name) ? next.delete(name) : next.add(name);
       return next;
     });
   }
@@ -237,18 +236,18 @@ function RecipeModal({ recipe, onClose }) {
               ) : (
                 <>
                   <View style={{ gap: 8, marginBottom: 12 }}>
-                    {fridgeMatched.map(item => {
-                      const selected = selectedUsed.has(item.id);
+                    {fridgeMatched.map(name => {
+                      const selected = selectedUsed.has(name);
                       return (
                         <TouchableOpacity
-                          key={item.id}
+                          key={name}
                           style={{
                             flexDirection: "row", alignItems: "center", gap: 10,
                             padding: 10, borderRadius: 10, borderWidth: 1.5,
                             borderColor: selected ? C.primary : C.border,
                             backgroundColor: selected ? C.primaryLt : "#fff",
                           }}
-                          onPress={() => toggleUsed(item.id)}
+                          onPress={() => toggleUsed(name)}
                         >
                           <View style={{
                             width: 20, height: 20, borderRadius: 10, borderWidth: 1.5,
@@ -258,8 +257,7 @@ function RecipeModal({ recipe, onClose }) {
                           }}>
                             {selected && <Text style={{ fontSize: 11, color: "#fff", fontWeight: "800" }}>✓</Text>}
                           </View>
-                          <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: C.text }}>{item.name}</Text>
-                          <Text style={{ fontSize: 12, color: C.textMuted }}>{item.count ?? 1}개</Text>
+                          <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: C.text }}>{name}</Text>
                         </TouchableOpacity>
                       );
                     })}
