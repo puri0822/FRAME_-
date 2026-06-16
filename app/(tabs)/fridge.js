@@ -1,5 +1,6 @@
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -615,6 +616,16 @@ export default function FridgeScreen() {
       loaded.current = true;
     }).catch(() => { loaded.current = true; });
   }, []);
+
+  // 탭 포커스 시 로컬 저장소 재동기화 (다른 탭에서 재료 제거 시 반영)
+  useFocusEffect(
+    useCallback(() => {
+      if (!loaded.current) return;
+      loadFridgeFromStorage().then(stored => {
+        setItems(stored);
+      }).catch(() => {});
+    }, [])
+  );
 
   // 로그인 시 서버에서 동기화
   useEffect(() => {
