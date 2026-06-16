@@ -1,4 +1,4 @@
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -296,6 +296,7 @@ function RecipeModal({ recipe, onClose }) {
 }
 
 export default function ExploreScreen() {
+  const { search: searchParam } = useLocalSearchParams();
   const [allRecipes,     setAllRecipes] = useState([]);
   const [trending,       setTrending]   = useState([]);
   const [categories,     setCategories] = useState(["전체"]);
@@ -310,6 +311,13 @@ export default function ExploreScreen() {
   const [selectedRecipe, setRecipe]         = useState(null);
   const [recoRecipes,    setRecoRecipes]    = useState([]);
   const [filtered,       setFiltered]       = useState([]);
+
+  useEffect(() => {
+    if (searchParam) {
+      setQuery(searchParam);
+      setSearchOpen(true);
+    }
+  }, [searchParam]);
 
   useEffect(() => {
     Promise.all([

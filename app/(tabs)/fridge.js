@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -583,6 +584,7 @@ function IngredientItem({ item, selected, onToggle, onEdit }) {
 
 /* ── 메인 컴포넌트 ── */
 export default function FridgeScreen() {
+  const router = useRouter();
   const { user } = useAuth();
   const [items, setItems]             = useState([]);
   const [activeTab, setTab]           = useState("전체");
@@ -805,7 +807,10 @@ export default function FridgeScreen() {
         {/* 재료 목록 */}
         <ScrollView style={st.content} contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: 24 }}>
           {selectedIds.size > 0 && (
-            <TouchableOpacity style={st.recipeSearchBtn}>
+            <TouchableOpacity
+              style={st.recipeSearchBtn}
+              onPress={() => router.push({ pathname: "/(tabs)/explore", params: { search: selectedNames.join(" ") } })}
+            >
               <Text style={st.recipeSearchBtnText} numberOfLines={1}>
                 🍳 {selectedNames.join(", ")} 으로 레시피 찾기
               </Text>
