@@ -1,9 +1,0 @@
-{
-  "name": "lambda-auth",
-  "version": "1.0.0",
-  "main": "index.js",
-  "dependencies": {
-    "mysql2": "^3.6.0",
-    "jsonwebtoken": "^9.0.2"
-  }
-}
