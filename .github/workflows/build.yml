@@ -30,6 +30,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Create .env file
+        run: |
+          echo "EXPO_PUBLIC_GOOGLE_CLIENT_ID=412792507622-0e2psgrf1tusb2fdbfv4cqfg5us0fabp.apps.googleusercontent.com" >> .env
+          echo "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=412792507622-dru8mssl5u3cnd6tm85b11msoih7e27i.apps.googleusercontent.com" >> .env
+
       - name: Install dependencies
         run: npm install
 
