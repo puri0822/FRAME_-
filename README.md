@@ -8,6 +8,8 @@
 
 > Android 기기에 직접 설치할 수 있는 APK 파일을 제공합니다.
 
+[![APK 다운로드](https://img.shields.io/badge/APK_다운로드-최신버전-brightgreen?style=for-the-badge&logo=android&logoColor=white)](https://github.com/puri0822/FRAME_-/releases/latest/download/app-release.apk)
+
 ### 최신 버전 받기
 
 **[Releases 페이지](https://github.com/puri0822/FRAME_-/releases/latest)** 에서 `app-release.apk` 파일을 다운로드하세요.
