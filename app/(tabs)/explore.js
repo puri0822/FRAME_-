@@ -332,16 +332,16 @@ export default function ExploreScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!trending.length) return;
       const fridgeList = getIngredients().map(n => n.toLowerCase());
       if (!fridgeList.length) { setRecoRecipes(trending.slice(0, 5)); return; }
+      if (!allRecipes.length) return;
 
       function matches(ingName) {
         const il = ingName.toLowerCase();
         return fridgeList.some(n => il.includes(n) || n.includes(il));
       }
 
-      const scored = trending
+      const scored = allRecipes
         .map((r) => {
           const total    = (r.ingredients || []).length;
           const owned    = (r.ingredients || []).filter(ing => matches(ing));
@@ -354,7 +354,7 @@ export default function ExploreScreen() {
         .sort((a, b) => b.matchPct - a.matchPct)
         .slice(0, 6);
       setRecoRecipes(scored.length ? scored : trending.slice(0, 5));
-    }, [trending])
+    }, [allRecipes, trending])
   );
 
   useEffect(() => {
