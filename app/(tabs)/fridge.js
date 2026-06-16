@@ -633,7 +633,7 @@ export default function FridgeScreen() {
 
   // items 변경 시 → store 업데이트 + 로컬 저장 + 서버 동기화
   useEffect(() => {
-    setIngredients(items.map(i => i.name));
+    setIngredients(items.filter(i => { const info = getExpiryInfo(i.expiry); return !info || info.status !== "expired"; }).map(i => i.name));
     if (!loaded.current) return;
     saveFridgeToStorage(items).catch(() => {});
     if (user?.userId) {
@@ -757,7 +757,10 @@ export default function FridgeScreen() {
 
   const visible = getVisible();
   const grouped = activeTab === "전체" ? getGrouped(visible) : null;
-  const selectedNames = items.filter((i) => selectedIds.has(i.id)).map((i) => i.name);
+  const selectedNames = items
+    .filter((i) => selectedIds.has(i.id))
+    .filter((i) => { const info = getExpiryInfo(i.expiry); return !info || info.status !== "expired"; })
+    .map((i) => i.name);
 
   return (
     <View style={st.container}>
