@@ -18,7 +18,7 @@ import * as ImagePicker from "expo-image-picker";
 import Svg, { Line } from "react-native-svg";
 import { C } from "../../styles/colors";
 import st from "../../styles/tabs/fridge";
-import { setIngredients, loadFridgeFromStorage, saveFridgeToStorage } from "../store";
+import { setIngredients, setFridgeItems, loadFridgeFromStorage, saveFridgeToStorage } from "../store";
 import { useAuth } from "../context/AuthContext";
 import { EC2_ENDPOINTS } from "../config/api";
 
@@ -644,6 +644,7 @@ export default function FridgeScreen() {
 
   // items 변경 시 → store 업데이트 + 로컬 저장 + 서버 동기화
   useEffect(() => {
+    setFridgeItems(items);
     setIngredients(items.filter(i => { const info = getExpiryInfo(i.expiry); return !info || info.status !== "expired"; }).map(i => i.name));
     if (!loaded.current) return;
     saveFridgeToStorage(items).catch(() => {});

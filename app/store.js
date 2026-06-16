@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system';
 
 let _ingredients = [];
+let _fridgeItems  = [];
 
 const FRIDGE_PATH = () => FileSystem.documentDirectory + 'fridge_items.json';
 
@@ -10,6 +11,14 @@ export function setIngredients(items) {
 
 export function getIngredients() {
   return _ingredients;
+}
+
+export function setFridgeItems(items) {
+  _fridgeItems = [...items];
+}
+
+export function getFridgeItems() {
+  return _fridgeItems;
 }
 
 export async function loadFridgeFromStorage() {

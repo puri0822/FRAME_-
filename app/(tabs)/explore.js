@@ -16,7 +16,7 @@ import {
 import Svg, { Circle, Line, Path } from "react-native-svg";
 import { C } from "../../styles/colors";
 import st, { DIFF_COLOR } from "../../styles/tabs/explore";
-import { getIngredients, loadFridgeFromStorage, saveFridgeToStorage, setIngredients } from "../store";
+import { getIngredients, getFridgeItems, saveFridgeToStorage, setIngredients, setFridgeItems } from "../store";
 import { EC2_ENDPOINTS } from "../config/api";
 import { useAuth } from "../context/AuthContext";
 
@@ -116,10 +116,11 @@ function RecipeModal({ recipe, onClose }) {
     if (!selectedUsed.size || removing) return;
     setRemoving(true);
     try {
-      const stored   = await loadFridgeFromStorage();
+      const stored   = getFridgeItems();
       const newItems = stored.filter(i => !selectedUsed.has(i.name));
-      await saveFridgeToStorage(newItems);
+      setFridgeItems(newItems);
       setIngredients(newItems.map(i => i.name));
+      await saveFridgeToStorage(newItems);
       if (user?.userId) {
         fetch(`${EC2_ENDPOINTS.fridge}/${user.userId}`, {
           method: "PUT",
