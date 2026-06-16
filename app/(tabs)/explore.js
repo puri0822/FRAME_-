@@ -407,6 +407,7 @@ export default function ExploreScreen() {
   const [selectedRecipe, setRecipe]         = useState(null);
   const [recoRecipes,    setRecoRecipes]    = useState([]);
   const [filtered,       setFiltered]       = useState([]);
+  const [searchPool,     setSearchPool]     = useState([]);
 
   useEffect(() => {
     if (searchParam) {
@@ -461,6 +462,11 @@ export default function ExploreScreen() {
     }, [allRecipes, trending])
   );
 
+  function pickRandom(pool, n = 20) {
+    if (pool.length <= n) return [...pool];
+    return [...pool].sort(() => Math.random() - 0.5).slice(0, n);
+  }
+
   useEffect(() => {
     if (!query && activeCategory === "전체" && !showFavOnly) return;
     setSearchLoading(true);
@@ -472,13 +478,19 @@ export default function ExploreScreen() {
       .then(data => {
         const arr    = Array.isArray(data) ? data : [];
         const result = showFavOnly ? arr.filter(r => favorites.has(r.id)) : arr;
-        setFiltered(result);
+        setSearchPool(result);
+        setFiltered(pickRandom(result));
       })
       .catch(() => {})
       .finally(() => setSearchLoading(false));
   }, [query, activeCategory, showFavOnly]);
 
   async function shuffle() {
+    // 검색 중이면 같은 결과풀에서 새로운 20개 뽑기
+    if (searchPool.length > 0 && (query || activeCategory !== "전체" || showFavOnly)) {
+      setFiltered(pickRandom(searchPool));
+      return;
+    }
     setQuery("");
     setCategory("전체");
     setShowFavOnly(false);
@@ -489,10 +501,12 @@ export default function ExploreScreen() {
                  : allRecipes.length > 0 ? allRecipes
                  : trending;
       if (Array.isArray(data) && data.length > 0) setAllRecipes(data);
-      if (pool.length > 0) setFiltered([...pool].sort(() => Math.random() - 0.5).slice(0, 10));
+      setSearchPool(pool);
+      if (pool.length > 0) setFiltered(pickRandom(pool));
     } catch {
       const pool = allRecipes.length > 0 ? allRecipes : trending;
-      if (pool.length > 0) setFiltered([...pool].sort(() => Math.random() - 0.5).slice(0, 10));
+      setSearchPool(pool);
+      if (pool.length > 0) setFiltered(pickRandom(pool));
     } finally {
       setSearchLoading(false);
     }
@@ -526,7 +540,11 @@ export default function ExploreScreen() {
         <View style={st.headerRow}>
           <Text style={st.pageTitle}>레시피 탐색</Text>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Text style={st.resultCount}>{searchLoading ? "..." : `${filtered.length}개`}</Text>
+            <Text style={st.resultCount}>
+              {searchLoading ? "..." : searchPool.length > filtered.length
+                ? `${filtered.length} / ${searchPool.length}개`
+                : `${filtered.length}개`}
+            </Text>
             <TouchableOpacity style={st.headerBtn} onPress={shuffle}>
               <Svg viewBox="0 0 24 24" width={22} height={22} fill="none" stroke={C.textSub} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <Line x1={1} y1={4} x2={1} y2={10} /><Line x1={1} y1={10} x2={7} y2={10} />
